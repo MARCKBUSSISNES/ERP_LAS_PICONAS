@@ -1,0 +1,473 @@
+/* ===== Las Piconas ERP - CSS Profesional ===== */
+*{
+  box-sizing: border-box;
+}
+
+body{
+  margin:0;
+  font-family:Segoe UI;
+  background:#0f172a;
+  color:white;
+}
+
+/* ===== Sidebar ===== */
+.sidebar{
+  width:220px;
+  background:#111827;
+  height:100vh;
+  position:fixed;
+  padding:20px;
+  border-right:1px solid rgba(255,255,255,.05);
+  overflow-y:auto;
+  overscroll-behavior: contain;
+}
+
+.sidebar button{
+  width:100%;
+  margin-bottom:10px;
+  padding:10px;
+  background:#1f2937;
+  border:none;
+  color:white;
+  cursor:pointer;
+  border-radius:8px;
+  transition:.2s ease;
+}
+
+.sidebar button:hover{
+  background:#273449;
+}
+
+/* ===== Logo ===== */
+.logo-container{
+  text-align:center;
+  margin-bottom:20px;
+}
+
+.logo{
+  width:120px;
+  max-width:100%;
+  margin:0 auto 10px;
+  display:block;
+
+  border-radius:14px;
+  padding:10px;
+  background:rgba(255,255,255,.03);
+  border:1px solid rgba(255,255,255,.10);
+  box-shadow: 0 10px 24px rgba(0,0,0,.35);
+  transition:.2s ease;
+}
+
+.logo:hover{
+  transform:translateY(-2px);
+  filter:brightness(1.05);
+}
+
+.logo-title{
+  font-weight:800;
+  font-size:13px;
+  color:#f97316;
+  letter-spacing:1px;
+  text-transform:uppercase;
+}
+
+/* ===== Main ===== */
+.main{
+  margin-left:240px;
+  padding:20px;
+  max-width:1400px;
+}
+
+/* ===== Cards / Panels ===== */
+.card{
+  background:#1e293b;
+  padding:20px;
+  margin:10px 0;
+  border-radius:12px;
+}
+
+.panel{
+  background:#111827;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;
+  padding:16px;
+}
+
+/* ===== Tables ===== */
+hr{
+  border:none;
+  border-top:1px solid rgba(255,255,255,.12);
+  margin:12px 0;
+}
+
+.table{
+  width:100%;
+  border-collapse:collapse;
+  margin-top:12px;
+  background:#0b1220;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;
+  overflow:hidden;
+}
+
+.table th,.table td{
+  padding:10px;
+  border-bottom:1px solid rgba(255,255,255,.08);
+  font-size:14px;
+}
+
+.table thead th{
+  color:#cbd5e1;
+  background:#0a1020;
+}
+
+.right{
+  text-align:right;
+}
+
+/* ===== Forms ===== */
+label{
+  display:block;
+  margin-top:10px;
+  color:#cbd5e1;
+  font-size:13px;
+}
+
+input, select{
+  width:100%;
+  padding:10px;
+  margin-top:6px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.10);
+  background:#0b1220;
+  color:#e5e7eb;
+  transition:.2s ease;
+}
+
+input:focus, select:focus{
+  outline:none;
+  border-color:#f97316;
+  box-shadow:0 0 0 2px rgba(249,115,22,.15);
+}
+
+/* ===== Grid ===== */
+.grid-2{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:16px;
+  width:100%;
+}
+
+@media (max-width:1100px){
+  .grid-2{
+    grid-template-columns:1fr;
+  }
+}
+
+/* ===== Row Flex ===== */
+.row{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+  width:100%;
+}
+
+.row > div{
+  flex:1 1 420px;
+  min-width:320px;
+}
+
+/* ===== Buttons Mejorados ===== */
+.btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+
+  padding:10px 16px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.12);
+  background:#1f2937;
+  color:#fff;
+  cursor:pointer;
+  margin-top:12px;
+  font-weight:600;
+  transition: all .2s ease;
+}
+
+.btn:hover{
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+}
+
+/* Botón principal (Agregar / Guardar) */
+.btn.accent{
+  background:#f97316;
+  border-color:#f97316;
+  color:#111;
+  font-weight:700;
+}
+
+.btn.accent:hover{
+  background:#fb923c;
+}
+
+/* Botón eliminar */
+.btn.danger{
+  background:#7f1d1d;
+  border-color:#7f1d1d;
+  color:#fff;
+}
+
+.btn.danger:hover{
+  background:#991b1b;
+}
+
+/* Botón pequeño (para tablas) */
+.btn.sm{
+  padding:6px 10px;
+  font-size:12px;
+  border-radius:8px;
+  margin-top:0;
+}
+
+/* ===== Header helpers ===== */
+.page-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  margin-bottom:12px;
+}
+
+.actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.muted{ color:#94a3b8; }
+.small{ font-size:12px; }
+.big{ font-size:22px; font-weight:800; }
+
+.hr{
+  border-top:1px dashed rgba(255,255,255,.20);
+  margin:12px 0;
+}
+
+/* ===== Totals / Tags ===== */
+.totals{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-top:12px;
+  padding:12px;
+  border-radius:12px;
+  background:#0b1220;
+  border:1px solid rgba(255,255,255,.08);
+}
+
+.tag{
+  padding:4px 10px;
+  border-radius:999px;
+  font-weight:800;
+  font-size:12px;
+  display:inline-block;
+}
+
+.tag.green{
+  background:rgba(34,197,94,.18);
+  color:#22c55e;
+  border:1px solid rgba(34,197,94,.35);
+}
+
+.tag.yellow{
+  background:rgba(234,179,8,.18);
+  color:#eab308;
+  border:1px solid rgba(234,179,8,.35);
+}
+
+.tag.red{
+  background:rgba(239,68,68,.18);
+  color:#ef4444;
+  border:1px solid rgba(239,68,68,.35);
+}
+/* Botones pequeños para acciones en tablas */
+.btn.sm{
+  padding:6px 10px;
+  border-radius:10px;
+  margin-top:0;
+  font-size:13px;
+}
+
+/* Modal */
+.modal-backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.55);
+  z-index:999;
+}
+.modal{
+  position:fixed;
+  z-index:1000;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
+  width:min(820px, 92vw);
+  max-height:85vh;
+  overflow:auto;
+  background:#0b1220;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:16px;
+  padding:16px;
+  box-shadow:0 20px 60px rgba(0,0,0,.55);
+}
+.btn.sm{
+  padding:6px 10px;
+  border-radius:10px;
+  margin-top:0;
+  font-size:13px;
+}
+
+.modal-backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.55);
+  z-index:999;
+}
+.modal{
+  position:fixed;
+  z-index:1000;
+  top:50%;
+  left:50%;
+  transform:translate(-50%,-50%);
+  width:min(820px, 92vw);
+  max-height:85vh;
+  overflow:auto;
+  background:#0b1220;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:16px;
+  padding:16px;
+  box-shadow:0 20px 60px rgba(0,0,0,.55);
+}
+.sidebar button{
+  width:100%;
+  text-align:left;
+  padding:10px 12px;
+  border-radius:10px;
+  transition:all .2s ease;
+}
+
+.sidebar button.active{
+  background:linear-gradient(90deg,#f97316,#ea580c);
+  color:white;
+  font-weight:700;
+  box-shadow:0 4px 14px rgba(0,0,0,.35);
+}
+
+.sidebar button:hover{
+  background:rgba(255,255,255,.08);
+}
+.mb-modal{ position:fixed; inset:0; z-index:9999; }
+.mb-backdrop{ position:absolute; inset:0; background:rgba(0,0,0,.55); }
+.mb-card{
+  position:relative;
+  width:min(560px, calc(100vw - 24px));
+  margin: 6vh auto;
+  background: rgba(10,14,22,.96);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 14px;
+  box-shadow: 0 25px 60px rgba(0,0,0,.45);
+  overflow:hidden;
+}
+.mb-head{
+  display:flex; align-items:center; gap:12px;
+  padding: 14px 14px;
+  border-bottom: 1px solid rgba(255,255,255,.10);
+}
+.mb-logo{ width:46px; height:46px; object-fit:contain; }
+.mb-title{ font-weight:900; font-size:16px; }
+.mb-sub{ opacity:.75; font-size:12px; margin-top:2px; }
+.mb-body{ padding: 14px; }
+.mb-body textarea, .mb-body input{
+  width:100%; padding:10px 12px; border-radius:10px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.04);
+  color: #fff;
+  outline:none;
+}
+.mb-body textarea{ resize: vertical; }
+/* ===== Producción - Lotes más grandes ===== */
+.produccion-lote{
+  font-size:18px;
+  font-weight:900;
+  letter-spacing:.5px;
+  color:#f97316; /* naranja marca */
+}
+
+/* ===== Producción - Bloque memos ===== */
+.produccion-lote{
+  font-size:18px !important;
+  font-weight:900 !important;
+  letter-spacing:.5px !important;
+}
+
+.produccion-memos{
+  font-size:15px !important;
+  line-height:1.5 !important;
+}
+/* ===== Animación modal (fade + scale) ===== */
+.mb-modal{
+  animation: mbFadeIn .18s ease-out both;
+}
+
+.mb-card{
+  transform-origin: center;
+  animation: mbPopIn .20s ease-out both;
+}
+
+@keyframes mbFadeIn{
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes mbPopIn{
+  from { transform: scale(.92) translateY(6px); opacity: 0; }
+  to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+/* Cierre suave */
+.mb-modal.mb-close{
+  animation: mbFadeOut .16s ease-in both;
+}
+.mb-modal.mb-close .mb-card{
+  animation: mbPopOut .16s ease-in both;
+}
+@keyframes mbFadeOut{
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes mbPopOut{
+  from { transform: scale(1) translateY(0); opacity: 1; }
+  to   { transform: scale(.96) translateY(6px); opacity: 0; }
+}
+/* ===== Modal confirmación + spinner ===== */
+.mb-confirm .mb-card{ max-width:520px; }
+.mb-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:14px; flex-wrap:wrap; }
+
+.mb-loading{
+  display:flex; align-items:center; gap:10px;
+  padding:10px 12px; border-radius:12px;
+  border:1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.04);
+}
+
+.mb-spinner{
+  width:18px; height:18px;
+  border:3px solid rgba(255,255,255,.22);
+  border-top-color: rgba(249,115,22,.95);
+  border-radius:50%;
+  animation: mbSpin .8s linear infinite;
+}
+
+@keyframes mbSpin{ to{ transform: rotate(360deg); } }
