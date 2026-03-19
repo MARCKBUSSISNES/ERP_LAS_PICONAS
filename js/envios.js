@@ -408,7 +408,12 @@ function confirmarEnvio() {
     }
   }
 
+  // 1) Generar correlativo
   var envioId = generarCorrelativo("ENV");
+
+  // 2) Volver a leer DB para no pisar el correlativo actualizado
+  db = getDB();
+
   var fechaISO = new Date().toISOString();
   var obs = (document.getElementById("envObs").value || "").trim();
 
