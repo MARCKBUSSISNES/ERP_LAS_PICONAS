@@ -511,6 +511,11 @@ function imprimirEtiquetas2x4({ producto, lote, fechaISO, cantidad, logoSrc = "a
   win.document.close();
 }
 
+// Alias de compatibilidad
+function imprimirEtiquetasProducto(producto, lote, cantidad, fechaISO, logoSrc){
+  return imprimirEtiquetas2x4({ producto, lote, fechaISO, cantidad, logoSrc });
+}
+
 /* =========================================================
    UI PRINCIPAL
 ========================================================= */
@@ -1234,8 +1239,23 @@ function finalizarProduccion(ordenId) {
 
   saveDB(db);
 
-  if (typeof imprimirEtiquetasProducto === "function") {
-    try { imprimirEtiquetasProducto(orden.productoFinal, orden.lote, real); } catch(e){ console.warn(e); }
+  try {
+    if (typeof imprimirEtiquetas2x4 === "function") {
+      imprimirEtiquetas2x4({
+        producto: orden.productoFinal,
+        lote: orden.lote,
+        fechaISO: new Date().toISOString(),
+        cantidad: real
+      });
+    } else if (typeof imprimirEtiquetasProducto === "function") {
+      imprimirEtiquetasProducto(orden.productoFinal, orden.lote, real);
+    } else if (typeof imprimirEtiqueta === "function") {
+      imprimirEtiqueta(orden.productoFinal, orden.lote, real);
+    } else {
+      console.warn("No se encontró función de impresión de etiquetas.");
+    }
+  } catch (e) {
+    console.warn("No se pudo imprimir etiquetas:", e);
   }
 
   cargarProducciones();
