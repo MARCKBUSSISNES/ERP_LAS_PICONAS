@@ -60,9 +60,6 @@ window.imprimirTicketEnvio = function(envio){
 
     var costoHtml = `
         <div class="totals">
-            <div class="line"><span>Venta total</span><span>${money(envio.total || 0)}</span></div>
-            <div class="line"><span>Costo</span><span>${money(envio.costoTotal || 0)}</span></div>
-            <div class="line"><span>Utilidad</span><span>${money(envio.utilidadTotal || 0)}</span></div>
             <div class="line grand"><span>TOTAL</span><span>${money(envio.total || 0)}</span></div>
         </div>
     `;
