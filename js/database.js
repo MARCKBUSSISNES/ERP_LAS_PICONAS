@@ -285,11 +285,19 @@ function importBackupDB(file){
     const r = new FileReader();
     r.onload = () => {
       try{
-        const obj = JSON.parse(String(r.result||"{}"));
+        const obj = JSON.parse(String(r.result || "{}"));
         if(!obj || typeof obj !== "object") throw new Error("Backup inválido.");
-        saveDB(obj);
-        resolve(obj);
-      }catch(e){ reject(e); }
+
+        const realDB =
+          (obj.keys && obj.keys[DB_KEY] && typeof obj.keys[DB_KEY] === "object")
+            ? obj.keys[DB_KEY]
+            : obj;
+
+        saveDB(realDB);
+        resolve(realDB);
+      }catch(e){
+        reject(e);
+      }
     };
     r.onerror = () => reject(new Error("No se pudo leer el archivo."));
     r.readAsText(file);
