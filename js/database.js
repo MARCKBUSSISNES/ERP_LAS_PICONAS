@@ -97,6 +97,13 @@ function initDatabase() {
     const db = getDB();
 
     db.usuarios = db.usuarios || [{ usuario: "juan luis", clave: "22782522", rol: "ADMIN" }];
+
+    const adminPrincipal = (db.usuarios || []).find(u =>
+      String(u?.usuario || "").trim().toLowerCase() === "juan luis"
+    );
+    if (!adminPrincipal) {
+      db.usuarios.push({ usuario: "juan luis", clave: "22782522", rol: "ADMIN" });
+    }
     db.clientes = db.clientes || [];
     db.vehiculos = db.vehiculos || [];
     db.recetas = db.recetas || [];
