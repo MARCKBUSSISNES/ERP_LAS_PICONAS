@@ -97,7 +97,7 @@ function downloadJsonFile(filename, obj){
         reason: reason || "auto",
         user: (() => {
           const sess = safeParse(sessionRaw);
-          return sess?.user?.username || null;
+          return sess?.usuario || sess?.user?.username || null;
         })(),
       },
       // OJO: aquí va el wrapper con keys (tu import ya debe soportarlo)
@@ -182,8 +182,14 @@ async function backupNowFS(reason){
   const stamp = nowStamp();
 
   // ✅ Si NO hay FS (file://), hacemos descarga
+  const usuario = String(payload?.meta?.user || "SIN_USUARIO")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^A-Z0-9_]/g, "");
+
   if (!fsAvailable()) {
-    downloadJsonFile(`backup_${stamp}.json`, payload);
+    downloadJsonFile(`BACKUP_LAS_PICONAS_AUTO_${usuario}_${stamp}.json`, payload);
     downloadJsonFile(`backup_latest.json`, payload); // opcional
     return true;
   }
@@ -192,7 +198,7 @@ async function backupNowFS(reason){
   const dir = await getBackupFolderHandle();
   if (!dir) throw new Error("No hay carpeta de backup configurada (ADMIN debe elegirla).");
 
-  await writeJsonFile(dir, `backup_${stamp}.json`, payload);
+  await writeJsonFile(dir, `BACKUP_LAS_PICONAS_AUTO_${usuario}_${stamp}.json`, payload);
   await writeJsonFile(dir, `backup_latest.json`, payload);
 
   return true;
