@@ -103,8 +103,8 @@ window.imprimirTicketEnvio = function(envio){
                 }
 
                 .brand img{
-                    max-width:48mm;
-                    max-height:22mm;
+                    max-width:70mm;
+                    max-height:45mm;
                     height:auto;
                     display:block;
                     margin:0 auto 4px auto;
