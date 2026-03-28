@@ -104,7 +104,7 @@ function renderUsuarios(){
         }
 
         ${
-          (u.usuario||"").toLowerCase()==="juan luis"
+          String(u.usuario||"").trim().toLowerCase()==="juan luis"
             ? `<span class="muted small" style="margin-left:8px;">Protegido</span>`
             : `
               <button class="btn danger sm" style="margin-left:8px;" onclick="deleteUsuario(${i})">🗑</button>
@@ -271,7 +271,7 @@ function deleteUsuario(i){
   const db = getDB();
   const u = db.usuarios[i];
   if(!u) return;
-  if((u.usuario||"").toLowerCase() === "juan luis"){
+  if(String(u.usuario||"").trim().toLowerCase() === "juan luis"){
     alert("No se puede eliminar el ADMIN principal.");
     return;
   }
