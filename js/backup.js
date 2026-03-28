@@ -39,7 +39,7 @@
         createdAtIso: new Date().toISOString(),
         user: (() => {
           const sess = safeJsonParse(sessionRaw);
-          return sess?.user?.username || null;
+          return sess?.usuario || sess?.user?.username || null;
         })(),
       },
       keys: {
@@ -55,7 +55,18 @@
 
     const a = document.createElement("a");
     a.href = url;
-    a.download = `BACKUP_LAS_PICONAS_${nowYmdHms()}.json`;
+    const reason = String(obj?.meta?.reason || "manual").toLowerCase();
+    const tipo = reason.includes("localstorage") || reason.includes("storage")
+      ? "AUTO"
+      : "MANUAL";
+
+    const usuario = String(obj?.meta?.user || "SIN_USUARIO")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "_")
+      .replace(/[^A-Z0-9_]/g, "");
+
+    a.download = `BACKUP_LAS_PICONAS_${tipo}_${usuario}_${nowYmdHms()}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();
