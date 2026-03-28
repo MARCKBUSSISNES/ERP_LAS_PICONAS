@@ -301,7 +301,8 @@ function getInventarioPTAgregado(){
         fecha: it.fecha || "",
         ts: it.ts || _invDateValue(it),
         costoTotal: 0,
-        costoUnitario: Number(it.costoUnitario || 0)
+        costoUnitario: Number(it.costoUnitario || 0),
+        precioVenta: Number(it.precioVenta || 0)
       };
     }
 
@@ -315,6 +316,7 @@ function getInventarioPTAgregado(){
     if(!map[key].fechaISO && it.fechaISO) map[key].fechaISO = it.fechaISO;
     if(!map[key].fecha && it.fecha) map[key].fecha = it.fecha;
     if(!map[key].ts && it.ts) map[key].ts = it.ts;
+    if(!map[key].precioVenta && Number(it.precioVenta || 0) > 0) map[key].precioVenta = Number(it.precioVenta || 0);
 
     if(!map[key].costoUnitario && map[key].cantidad > 0){
       map[key].costoUnitario = map[key].costoTotal / map[key].cantidad;
@@ -349,7 +351,8 @@ function getInventarioPTGeneral(){
         lotes: [],
         oldestLote: it.lote || "",
         oldestFecha: it.fechaISO || it.fecha || "",
-        precioVenta: 0
+        precioVenta: 0,
+        precioVentaManual: 0
       };
     }
 
@@ -370,8 +373,13 @@ function getInventarioPTGeneral(){
         it.costoTotal != null
           ? it.costoTotal
           : (Number(it.cantidad || 0) * Number(it.costoUnitario || 0))
-      )
+      ),
+      precioVenta: Number(it.precioVenta || 0)
     });
+
+    if(!map[producto].precioVentaManual && Number(it.precioVenta || 0) > 0){
+      map[producto].precioVentaManual = Number(it.precioVenta || 0);
+    }
 
     var fechaActual = _invDateValue(it);
     var fechaGuardada = Date.parse(map[producto].oldestFecha || "");
@@ -386,7 +394,9 @@ function getInventarioPTGeneral(){
     x.costoUnitarioProm = x.cantidad > 0 ? (x.costoTotal / x.cantidad) : 0;
 
     var receta = getRecetaByProducto(x.producto, db);
-    x.precioVenta = receta ? calcularPrecioVentaReceta(receta, db) : 0;
+    x.precioVenta = Number(x.precioVentaManual || 0) > 0
+      ? Number(x.precioVentaManual || 0)
+      : (receta ? calcularPrecioVentaReceta(receta, db) : 0);
 
     return x;
   });
