@@ -210,6 +210,32 @@ window.imprimirTicketEnvio = function(envio){
                     font-size:10px;
                 }
 
+                .firmas{
+                    margin-top:12px;
+                }
+
+                .firma-block{
+                    margin-top:14px;
+                }
+
+                .firma-label{
+                    font-size:10px;
+                    font-weight:700;
+                    margin-bottom:12px;
+                    letter-spacing:.2px;
+                }
+
+                .firma-line{
+                    border-bottom:1px solid #000;
+                    height:16px;
+                    width:100%;
+                }
+
+                .firma-sub{
+                    font-size:10px;
+                    margin-top:4px;
+                }
+
                 .lotes-title{
                     font-size:11px;
                     font-weight:700;
@@ -283,6 +309,18 @@ window.imprimirTicketEnvio = function(envio){
                     </tbody>
                 </table>
             ` : ""}
+
+            <div class="firmas">
+                <div class="hr"></div>
+                <div class="firma-block">
+                    <div class="firma-label">FIRMA DE RECIBIDO</div>
+                    <div class="firma-line"></div>
+                </div>
+                <div class="firma-block">
+                    <div class="firma-label">NOMBRE</div>
+                    <div class="firma-line"></div>
+                </div>
+            </div>
 
             <div class="footer">
                 <div>Gracias por su preferencia</div>
