@@ -1,5 +1,5 @@
 // js/envios.js
-console.log("[envios.js] cargado OK");
+console.log("[envios.js] CARGADO OK");
 
 var envioCarrito = [];
 
@@ -376,7 +376,113 @@ function limpiarEnvio() {
   loadView("envios");
 }
 
+
+function _buildSucursalOptionsHtml(selectedIdx) {
+  var db = getDB();
+  return (db.clientes || []).map(function (c, i) {
+    var sel = String(i) === String(selectedIdx) ? " selected" : "";
+    return '<option value="' + i + '"' + sel + '>' + escapeHtml(c.nombre || ("Sucursal " + (i + 1))) + "</option>";
+  }).join("");
+}
+
+function cerrarModalSucursalEnvio() {
+  var overlay = document.getElementById("envSucursalOverlay");
+  if (overlay) overlay.remove();
+}
+
+function abrirModalSeleccionSucursal(onConfirm) {
+  var db = getDB();
+  var clientes = db.clientes || [];
+
+  if (!clientes.length) {
+    alert("No hay sucursales/clientes creados.");
+    return;
+  }
+
+  cerrarModalSucursalEnvio();
+
+  var currentValue = "";
+  var selectPrincipal = document.getElementById("envCliente");
+  if (selectPrincipal) currentValue = String(selectPrincipal.value || "0");
+
+  var overlay = document.createElement("div");
+  overlay.id = "envSucursalOverlay";
+  overlay.style.cssText = [
+    "position:fixed",
+    "inset:0",
+    "background:rgba(0,0,0,.45)",
+    "display:flex",
+    "align-items:center",
+    "justify-content:center",
+    "z-index:99999",
+    "padding:18px"
+  ].join(";");
+
+  overlay.innerHTML = ''
+    + '<div style="width:min(520px,100%);background:#0f172a;color:#fff;border:1px solid rgba(255,255,255,.12);border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.45);overflow:hidden;">'
+    +   '<div style="padding:18px 20px;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between;gap:12px;">'
+    +     '<div>'
+    +       '<div style="font-size:20px;font-weight:800;line-height:1.2;">¿A qué sucursal va este envío?</div>'
+    +       '<div style="opacity:.82;font-size:13px;margin-top:4px;">Seleccione Sucursal para continuar con la confirmación del envío.</div>'
+    +     '</div>'
+    +     '<button type="button" id="envSucursalCerrarX" class="btn sm">✕</button>'
+    +   '</div>'
+    +   '<div style="padding:20px;">'
+    +     '<label style="display:block;margin-bottom:8px;font-weight:700;">Sucursal</label>'
+    +     '<select id="envSucursalSelect" style="width:100%;padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:#111827;color:#fff;">'
+    +       _buildSucursalOptionsHtml(currentValue)
+    +     '</select>'
+    +     '<div style="margin-top:14px;font-size:12px;opacity:.78;">La sucursal elegida aquí actualizará automáticamente el campo Cliente del formulario.</div>'
+    +   '</div>'
+    +   '<div style="padding:16px 20px;border-top:1px solid rgba(255,255,255,.08);display:flex;justify-content:flex-end;gap:10px;">'
+    +     '<button type="button" id="envSucursalCancelar" class="btn">Cancelar</button>'
+    +     '<button type="button" id="envSucursalAceptar" class="btn accent">Continuar</button>'
+    +   '</div>'
+    + '</div>';
+
+  document.body.appendChild(overlay);
+
+  function close() {
+    cerrarModalSucursalEnvio();
+  }
+
+  overlay.addEventListener("click", function (e) {
+    if (e.target === overlay) close();
+  });
+
+  document.getElementById("envSucursalCerrarX").onclick = close;
+  document.getElementById("envSucursalCancelar").onclick = close;
+  document.getElementById("envSucursalAceptar").onclick = function () {
+    var modalSelect = document.getElementById("envSucursalSelect");
+    var selectedIdx = modalSelect ? modalSelect.value : "";
+
+    if (selectedIdx === "" || selectedIdx == null) {
+      alert("Selecciona una sucursal.");
+      if (modalSelect) modalSelect.focus();
+      return;
+    }
+
+    var selectCliente = document.getElementById("envCliente");
+    if (selectCliente) {
+      selectCliente.value = String(selectedIdx);
+      try { selectCliente.dispatchEvent(new Event("change")); } catch (e) {}
+    }
+
+    close();
+    if (typeof onConfirm === "function") onConfirm();
+  };
+
+  var modalSelect = document.getElementById("envSucursalSelect");
+  if (modalSelect) modalSelect.focus();
+}
+
 function confirmarEnvio() {
+  abrirModalSeleccionSucursal(function () {
+    confirmarEnvioFinal();
+  });
+}
+
+function confirmarEnvioFinal() {
   var db = getDB();
   if (!envioCarrito.length) { alert("Agrega productos al envío."); return; }
 
