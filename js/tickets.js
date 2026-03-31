@@ -1,702 +1,359 @@
-// js/tickets.js
-console.log("[tickets.js] cargado OK");
+// js/database.js
+var DB_KEY = window.DB_KEY || "LAS_PICONAS_ERP_V2";
+window.DB_KEY = DB_KEY;
+function initDatabase() {
+  if (!localStorage.getItem(DB_KEY)) {
+    const initialData = {
+      usuarios: [{ usuario: "juan luis", clave: "22782522", rol: "ADMIN" }],
 
-// Formateo de dinero
-function money(n){
-    var v = Number(n || 0);
-    return "Q" + v.toFixed(2);
-}
+      clientes: [],
+      vehiculos: [],
 
-// Escape básico HTML
-function escapeHtml(str){
-    if(!str) return "";
-    return String(str)
-        .replace(/&/g,"&amp;")
-        .replace(/</g,"&lt;")
-        .replace(/>/g,"&gt;")
-        .replace(/"/g,"&quot;")
-        .replace(/'/g,"&#039;");
-}
+      // ✅ RECETAS del sistema (seed)
+      recetas: (typeof RECETAS_SEED !== "undefined"
+        ? RECETAS_SEED.map(r => ({
+            ...r,
+            system: true,
+            locked: true,
+            version: r.version || 1,
+            createdAt: Date.now(),
+            createdBy: "SYSTEM",
+            categoria: r.categoria || "GENERAL",
+            ingredientes: Array.isArray(r.ingredientes) ? r.ingredientes : [],
+            // ✅ Procedimiento (por si viene en seed)
+            procedimiento: (r.procedimiento || "").toString(),
+            procedimientoSteps: Array.isArray(r.procedimientoSteps) ? r.procedimientoSteps : []
+          }))
+        : []
+      ),
 
-// Función global para imprimir ticket de envío
-window.imprimirTicketEnvio = function(envio){
-
-    var fecha = new Date(envio.fechaISO || Date.now());
-    var fechaStr = fecha.toLocaleDateString();
-    var horaStr = fecha.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-
-    var rows = "";
-    for(var i = 0; i < (envio.items || []).length; i++){
-        var it = envio.items[i];
-
-        rows += `
-            <tr>
-                <td class="prod">
-                    <div class="prod-name">${escapeHtml(it.producto || "")}</div>
-                    <div class="prod-sub">${Number(it.cantidad || 0)} x ${money(it.precio || 0)}</div>
-                </td>
-                <td class="right total-line">${money(it.subtotal || 0)}</td>
-            </tr>
-        `;
-    }
-
-    var lotesRows = "";
-    if(envio.itemsLotes && envio.itemsLotes.length){
-        for(var j = 0; j < envio.itemsLotes.length; j++){
-            var l = envio.itemsLotes[j];
-            lotesRows += `
-                <tr>
-                    <td class="left">${escapeHtml(l.producto || "")}</td>
-                    <td class="center">${escapeHtml(l.lote || "")}</td>
-                    <td class="right">${Number(l.cantidad || 0)}</td>
-                </tr>
-            `;
+      // ✅ ROLES (con permiso de ver recetas)
+      roles: [
+        {
+          nombre: "ADMIN",
+          permisos: {
+            usuarios: true,
+            recetas_ver: true,
+            recetas_editar: true,
+            mp_editar: true,
+            compras_mp: true,
+            produccion: true,
+            envios: true,
+            exportar: true
+          }
+        },
+        {
+          nombre: "SUPERVISOR",
+          permisos: {
+            usuarios: false,
+            recetas_ver: true,
+            recetas_editar: true,
+            mp_editar: false,
+            compras_mp: false,
+            produccion: true,
+            envios: true,
+            exportar: true
+          }
+        },
+        {
+          nombre: "OPERADOR",
+          permisos: {
+            usuarios: false,
+            recetas_ver: true,      // 👈 SOLO VER
+            recetas_editar: false,  // 👈 NO EDITAR
+            mp_editar: false,
+            compras_mp: false,
+            produccion: true,
+            envios: true,
+            exportar: false
+          }
         }
+      ],
+      // Legacy (puedes mantenerlo por compatibilidad)
+      inventarioMP: [],
+
+      inventarioPT: [],
+      producciones: [],
+      lotes: [],
+      envios: [],
+      ventas: [],
+
+      // NUEVO: MP + compras + logs
+      materiasPrimas: [],
+      comprasMP: [],
+      ajustesMP: [],
+      variacionesRend: [],
+
+      // NUEVO: categorías
+      categorias: { mp: ["GENERAL"], recetas: ["GENERAL"] },
+
+      configuracion: { correlativos: {} }
+    };
+
+    localStorage.setItem(DB_KEY, JSON.stringify(initialData));
+  } else {
+    
+    // Migración suave: agrega llaves faltantes sin borrar datos
+    const db = getDB();
+
+    db.usuarios = db.usuarios || [{ usuario: "juan luis", clave: "22782522", rol: "ADMIN" }];
+
+    const adminPrincipal = (db.usuarios || []).find(u =>
+      String(u?.usuario || "").trim().toLowerCase() === "juan luis"
+    );
+    if (!adminPrincipal) {
+      db.usuarios.push({ usuario: "juan luis", clave: "22782522", rol: "ADMIN" });
     }
+    db.clientes = db.clientes || [];
+    db.vehiculos = db.vehiculos || [];
+    db.recetas = db.recetas || [];
 
-    var obsHtml = envio.obs
-        ? `<div class="box"><div class="label">OBSERVACIÓN</div><div>${escapeHtml(envio.obs)}</div></div>`
-        : "";
+    db.inventarioMP = db.inventarioMP || []; // legacy
+    db.inventarioPT = db.inventarioPT || [];
+    db.producciones = db.producciones || [];
+    db.lotes = db.lotes || [];
+    db.envios = db.envios || [];
+    db.ventas = db.ventas || [];
 
-    var costoHtml = `
-        <div class="totals">
-            <div class="line grand"><span>TOTAL</span><span>${money(envio.total || 0)}</span></div>
-        </div>
-    `;
+    db.materiasPrimas = db.materiasPrimas || [];
+    db.comprasMP = db.comprasMP || [];
+    db.ajustesMP = db.ajustesMP || [];
+    db.variacionesRend = db.variacionesRend || [];
 
-    var win = window.open("", "", "width=420,height=900");
+    db.categorias = db.categorias || { mp: ["GENERAL"], recetas: ["GENERAL"] };
+    db.categorias.mp = db.categorias.mp || ["GENERAL"];
+    db.categorias.recetas = db.categorias.recetas || ["GENERAL"];
 
-    win.document.write(`
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>Ticket Envío</title>
-            <style>
-                @page {
-                    size: 80mm auto;
-                    margin: 4mm;
-                }
-
-                *{
-                    box-sizing:border-box;
-                }
-
-                body{
-                    font-family: Arial, sans-serif;
-                    width: 72mm;
-                    margin: 0 auto;
-                    color:#000;
-                    font-size:12px;
-                    line-height:1.25;
-                }
-
-                .center{text-align:center;}
-                .right{text-align:right;}
-                .left{text-align:left;}
-                .bold{font-weight:700;}
-                .small{font-size:10px;}
-                .tiny{font-size:9px;}
-
-                .brand{
-                    text-align:center;
-                    margin-bottom:6px;
-                }
-
-                .brand img{
-                    max-width:70mm;
-                    max-height:49mm;
-                    height:auto;
-                    display:block;
-                    margin:0 auto 4px auto;
-                }
-
-                .brand-name{
-                    font-size:16px;
-                    font-weight:900;
-                    letter-spacing:.4px;
-                }
-
-                .ticket-title{
-                    font-size:12px;
-                    font-weight:700;
-                    margin-top:2px;
-                }
-
-                .hr{
-                    border-top:1px dashed #000;
-                    margin:7px 0;
-                }
-
-                .box{
-                    border:1px solid #000;
-                    padding:5px 6px;
-                    margin-bottom:6px;
-                }
-
-                .label{
-                    font-size:10px;
-                    font-weight:700;
-                    letter-spacing:.3px;
-                    margin-bottom:2px;
-                }
-
-                .meta-row{
-                    display:flex;
-                    justify-content:space-between;
-                    gap:8px;
-                    margin-bottom:2px;
-                }
-
-                table{
-                    width:100%;
-                    border-collapse:collapse;
-                }
-
-                th, td{
-                    padding:3px 0;
-                    vertical-align:top;
-                }
-
-                th{
-                    border-bottom:1px solid #000;
-                    font-size:11px;
-                    text-transform:uppercase;
-                }
-
-                .prod{
-                    width:70%;
-                }
-
-                .prod-name{
-                    font-weight:700;
-                    font-size:12px;
-                }
-
-                .prod-sub{
-                    font-size:10px;
-                }
-
-                .total-line{
-                    width:30%;
-                    font-weight:700;
-                    padding-left:6px;
-                }
-
-                .totals{
-                    border-top:1px dashed #000;
-                    border-bottom:1px dashed #000;
-                    padding:5px 0;
-                    margin-top:4px;
-                }
-
-                .totals .line{
-                    display:flex;
-                    justify-content:space-between;
-                    margin:2px 0;
-                    font-size:12px;
-                }
-
-                .totals .grand{
-                    margin-top:5px;
-                    padding-top:5px;
-                    border-top:1px solid #000;
-                    font-size:15px;
-                    font-weight:900;
-                }
-
-                .footer{
-                    text-align:center;
-                    margin-top:8px;
-                    font-size:10px;
-                }
-
-                .firmas{
-                    margin-top:12px;
-                }
-
-                .firma-block{
-                    margin-top:14px;
-                }
-
-                .firma-label{
-                    font-size:10px;
-                    font-weight:700;
-                    margin-bottom:12px;
-                    letter-spacing:.2px;
-                }
-
-                .firma-line{
-                    border-bottom:1px solid #000;
-                    height:16px;
-                    width:100%;
-                }
-
-                .firma-sub{
-                    font-size:10px;
-                    margin-top:4px;
-                }
-
-                .lotes-title{
-                    font-size:11px;
-                    font-weight:700;
-                    margin-bottom:4px;
-                }
-
-                .lotes th, .lotes td{
-                    font-size:10px;
-                    padding:2px 0;
-                }
-            </style>
-        </head>
-        <body>
-
-            <div class="brand">
-                <img src="assets/LOGO1.png" onerror="this.style.display='none'">
-                <div class="brand-name">LAS PICONAS</div>
-                <div class="ticket-title">COMPROBANTE DE ENVÍO</div>
-            </div>
-
-            <div class="hr"></div>
-
-            <div class="box">
-                <div class="meta-row"><span class="bold">Envío:</span><span>${escapeHtml(envio.envioId || "")}</span></div>
-                <div class="meta-row"><span class="bold">Fecha:</span><span>${fechaStr}</span></div>
-                <div class="meta-row"><span class="bold">Hora:</span><span>${horaStr}</span></div>
-            </div>
-
-            <div class="box">
-                <div class="label">CLIENTE</div>
-                <div>${escapeHtml(envio.clienteNombre || "")}</div>
-                <div class="small">${escapeHtml(envio.clienteDireccion || "")}</div>
-                <div class="small">${escapeHtml(envio.clienteTelefono || "")}</div>
-            </div>
-
-            <div class="box">
-                <div class="label">TRANSPORTE</div>
-                <div><span class="bold">Vehículo:</span> ${escapeHtml(envio.vehiculoPlaca || "")}</div>
-                <div><span class="bold">Piloto:</span> ${escapeHtml(envio.vehiculoPiloto || "")}</div>
-            </div>
-
-            ${obsHtml}
-
-            <table>
-                <thead>
-                    <tr>
-                        <th class="left">Detalle</th>
-                        <th class="right">Total</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rows}
-                </tbody>
-            </table>
-
-            ${costoHtml}
-
-            ${lotesRows ? `
-                <div class="hr"></div>
-                <div class="lotes-title">LOTES CONSUMIDOS</div>
-                <table class="lotes">
-                    <thead>
-                        <tr>
-                            <th class="left">Producto</th>
-                            <th class="center">Lote</th>
-                            <th class="right">Cant</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${lotesRows}
-                    </tbody>
-                </table>
-            ` : ""}
-
-            <div class="firmas">
-                <div class="hr"></div>
-                <div class="firma-block">
-                    <div class="firma-label">FIRMA DE RECIBIDO</div>
-                    <div class="firma-line"></div>
-                </div>
-                <div class="firma-block">
-                    <div class="firma-label">NOMBRE</div>
-                    <div class="firma-line"></div>
-                </div>
-            </div>
-
-            <div class="footer">
-                <div>Gracias por su preferencia</div>
-                <div>Marck Business © 2026</div>
-            </div>
-
-            <script>
-                window.onload = function(){
-                    window.focus();
-                    window.print();
-                }
-            <\/script>
-
-        </body>
-        </html>
-    `);
-
-    win.document.close();
-};
-// ===============================
-// Ticket Receta Escalada (SIN popup / SIN hojas en blanco)
-// ===============================
-window.imprimirTicketRecetaEscalada = (function(){
-  let printing = false;
-
-  function fmtQty(n){
-    const v = Number(n || 0);
-    if (!isFinite(v)) return "0";
-    return String(v.toFixed(3))
-      .replace(/\.000$/, "")
-      .replace(/(\.\d*[1-9])0+$/, "$1");
-  }
-
-  return function(ordenId){
-    try{
-      if(printing) return true;
-      printing = true;
-
-      const db = getDB();
-      const ord = (db.producciones||[]).find(x=>x.id===ordenId);
-      if(!ord){ printing=false; alert("No se encontró la orden: " + ordenId); return false; }
-
-      let receta = null;
-      if(ord.recetaId) receta = (db.recetas||[]).find(r=>r.id===ord.recetaId) || null;
-      if(!receta) receta = (db.recetas||[]).find(r=>(r.nombre||"") === (ord.recetaNombre||"")) || null;
-      if(!receta){ printing=false; alert("No se encontró la receta para imprimir."); return false; }
-
-      let factor = Number(ord.factor || 1);
-      if(!(factor > 0)) factor = 1;
-
-      const baseInfo = ord.baseInfo || {};
-      const baseTxt  = baseInfo.mpNombre || "BASE";
-      const baseUnit = baseInfo.unidad || "";
-      const baseQty  = Number(baseInfo.baseQty || 0);
-
-      const fecha = new Date(ord.ts || Date.now());
-      const fechaStr = fecha.toLocaleDateString();
-      const horaStr  = fecha.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-
-      const rendimiento = Number(ord.esperado || ord.rendimientoEsperado || receta.rendimientoEsperado || 0);
-      const unidadRend  = ord.unidad || receta.unidadRendimiento || "";
-
-      let rows = "";
-      (receta.ingredientes || []).forEach(ing=>{
-        const base = Number(ing.cantBase || ing.cant || 0);
-        const qty  = base * factor;
-
-        rows += `
-          <tr>
-            <td class="mp">
-              <div class="mp-name">${escapeHtml(ing.mpNombre || ing.nombre || "")}</div>
-            </td>
-            <td class="qty">${fmtQty(qty)}</td>
-            <td class="unit">${escapeHtml(ing.unidad || "")}</td>
-          </tr>
-        `;
+    db.configuracion = db.configuracion || { correlativos: {} };
+    db.configuracion.correlativos = db.configuracion.correlativos || {};
+    db.roles = db.roles || [
+  { nombre:"ADMIN", permisos:{ usuarios:true, recetas_editar:true, mp_editar:true, compras_mp:true, produccion:true, envios:true, exportar:true } },
+  { nombre:"SUPERVISOR", permisos:{ usuarios:false, recetas_editar:true, mp_editar:false, compras_mp:false, produccion:true, envios:true, exportar:true } },
+  { nombre:"OPERADOR", permisos:{ usuarios:false, recetas_editar:false, mp_editar:false, compras_mp:false, produccion:true, envios:true, exportar:false } },
+];
+// ✅ Sembrar recetas oficiales si faltan (NO borra recetas existentes)
+if (typeof RECETAS_SEED !== "undefined") {
+  const byId = new Map((db.recetas || []).filter(r => r && r.id).map(r => [r.id, r]));
+  for (const seed of RECETAS_SEED) {
+    if (!byId.has(seed.id)) {
+      db.recetas.push({
+        ...seed,
+        system: true,
+        locked: true,
+        version: seed.version || 1,
+        createdAt: Date.now(),
+        createdBy: "SYSTEM",
+        categoria: seed.categoria || "GENERAL",
+        ingredientes: Array.isArray(seed.ingredientes) ? seed.ingredientes : []
       });
-
-      const procedimientoHtml = receta.procedimiento
-        ? `
-          <div class="section">
-            <div class="section-title">PROCEDIMIENTO</div>
-            <div class="procedimiento">${escapeHtml(receta.procedimiento).replace(/\n/g, "<br>")}</div>
-          </div>
-        `
-        : "";
-
-      const old = document.getElementById("__print_overlay__");
-      if(old) old.remove();
-
-      const overlay = document.createElement("div");
-      overlay.id = "__print_overlay__";
-      overlay.innerHTML = `
-<style id="__print_recipe_css__">
-  #__print_overlay__{
-    position: fixed;
-    inset: 0;
-    background: #fff;
-    color:#000;
-    z-index: 999999;
-    overflow: auto;
-    padding: 8px;
-  }
-
-  #__print_recipe_root__{
-    width: 80mm;
-    margin: 0 auto;
-    padding: 2.5mm 2.5mm;
-    font-family: Arial, sans-serif;
-    font-size: 14px;
-    line-height: 1.22;
-  }
-
-  .center{ text-align:center; }
-  .right{ text-align:right; }
-  .left{ text-align:left; }
-
-  .brand{
-    text-align:center;
-    margin-bottom: 6px;
-  }
-
-  .brand-logo{
-    width: 100%;
-    max-height: 24mm;
-    object-fit: contain;
-    display:block;
-    margin: 0 auto 4px auto;
-  }
-
-  .title{
-    font-weight: 900;
-    font-size: 20px;
-    letter-spacing: .4px;
-    line-height: 1.05;
-  }
-
-  .sub{
-    font-size: 14px;
-    font-weight: 700;
-    margin-top: 2px;
-  }
-
-  .small{ font-size: 12px; }
-  .tiny{ font-size: 11px; }
-
-  .hr{
-    border-top: 2px dashed #000;
-    margin: 9px 0;
-  }
-
-  .hero{
-    border: 1.5px solid #000;
-    padding: 7px 6px;
-    text-align:center;
-    margin-bottom: 7px;
-  }
-
-  .hero-name{
-    font-size: 19px;
-    font-weight: 900;
-    line-height: 1.08;
-    text-transform: uppercase;
-  }
-
-  .hero-qty{
-    margin-top: 4px;
-    font-size: 16px;
-    font-weight: 800;
-  }
-
-  .box{
-    border: 1.5px solid #000;
-    padding: 6px 7px;
-    margin-bottom: 7px;
-  }
-
-  .box-title{
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: .3px;
-    border-bottom: 1px solid #000;
-    padding-bottom: 2px;
-    margin-bottom: 5px;
-    text-transform: uppercase;
-  }
-
-  .meta-row{
-    display:flex;
-    justify-content:space-between;
-    gap:8px;
-    margin-bottom: 3px;
-    font-size: 14px;
-  }
-
-  table{
-    width:100%;
-    border-collapse:collapse;
-  }
-
-  th, td{
-    padding: 4px 0;
-    vertical-align: top;
-  }
-
-  th{
-    border-bottom: 1px solid #000;
-    font-size: 12px;
-    text-transform: uppercase;
-  }
-
-  .mp{
-    width: 56%;
-    padding-right: 4px;
-  }
-
-  .mp-name{
-    font-weight: 700;
-    font-size: 15px;
-    word-break: break-word;
-  }
-
-  .qty{
-    width: 22%;
-    text-align: right;
-    font-weight: 900;
-    font-size: 16px;
-    padding-right: 4px;
-  }
-
-  .unit{
-    width: 22%;
-    text-align: right;
-    font-weight: 800;
-    font-size: 15px;
-  }
-
-  .section{
-    border: 1.5px solid #000;
-    padding: 6px 7px;
-    margin-top: 7px;
-  }
-
-  .section-title{
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: .3px;
-    border-bottom: 1px solid #000;
-    padding-bottom: 2px;
-    margin-bottom: 5px;
-    text-transform: uppercase;
-  }
-
-  .procedimiento{
-    font-size: 13px;
-    line-height: 1.28;
-    word-break: break-word;
-  }
-
-  .sign-area{
-    margin-top: 9px;
-  }
-
-  .sign-line{
-    border-top: 1px solid #000;
-    margin-top: 20px;
-    padding-top: 4px;
-    text-align:center;
-    font-size: 11px;
-  }
-
-  .footer{
-    text-align:center;
-    margin-top: 9px;
-    font-size: 11px;
-  }
-
-  @page {
-    size: 80mm auto;
-    margin: 2.5mm;
-  }
-
-  @media print{
-    body{ margin:0 !important; }
-    body > *:not(#__print_overlay__){ display:none !important; }
-
-    #__print_overlay__{
-      position: static;
-      inset: auto;
-      padding: 0;
-      background: #fff;
-      overflow: visible;
-    }
-
-    #__print_recipe_root__{
-      margin: 0 auto;
     }
   }
-</style>
+}
 
-<div id="__print_recipe_root__">
+// ✅ Asegurar bloqueo de recetas system
+for (const r of db.recetas) {
+  if (r && r.system === true) r.locked = true;
+  if (r && !r.version) r.version = 1;
+  if (r && !Array.isArray(r.ingredientes)) r.ingredientes = [];
+}
 
-  <div class="brand">
-    <img class="brand-logo" src="assets/LOGO1.png" onerror="this.style.display='none'">
-    <div class="title">LAS PICONAS</div>
-    <div class="sub">Ticket de Preparación</div>
-  </div>
-
-  <div class="hero">
-    <div class="hero-name">${escapeHtml(receta.nombre || ord.recetaNombre || "")}</div>
-    <div class="hero-qty">
-      ${rendimiento ? fmtQty(rendimiento) : ""} ${escapeHtml(unidadRend)}
-    </div>
-  </div>
-
-  <div class="box">
-    <div class="box-title">Datos de Producción</div>
-    <div class="meta-row"><span><b>Orden:</b></span><span>${escapeHtml(ord.id||"")}</span></div>
-    <div class="meta-row"><span><b>Fecha:</b></span><span>${fechaStr}</span></div>
-    <div class="meta-row"><span><b>Hora:</b></span><span>${horaStr}</span></div>
-    <div class="meta-row"><span><b>Base:</b></span><span>${fmtQty(baseQty)} ${escapeHtml(baseUnit)} ${escapeHtml(baseTxt)}</span></div>
-    <div class="meta-row"><span><b>Factor:</b></span><span>${fmtQty(factor)}</span></div>
-  </div>
-
-  <div class="box">
-    <div class="box-title">Ingredientes Escalados</div>
-    <table>
-      <thead>
-        <tr>
-          <th class="left">MP</th>
-          <th class="right">Cant</th>
-          <th class="right">Und</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows}
-      </tbody>
-    </table>
-  </div>
-
-  ${procedimientoHtml}
-
-  <div class="section sign-area">
-    <div class="section-title">Control</div>
-    <div class="sign-line">Preparado por</div>
-    <div class="sign-line">Revisado por</div>
-  </div>
-
-  <div class="footer">
-    <div class="small">Documento interno de producción</div>
-    <div class="tiny">Marck Business © 2026</div>
-  </div>
-
-</div>
-      `;
-
-      document.body.appendChild(overlay);
-
-      const cleanup = ()=>{
-        printing = false;
-        const o = document.getElementById("__print_overlay__");
-        if(o) o.remove();
-        window.removeEventListener("afterprint", cleanup);
-      };
-      window.addEventListener("afterprint", cleanup);
-
-      window.print();
-      setTimeout(()=>cleanup(), 1500);
-
-      return true;
-
-    }catch(e){
-      printing = false;
-      console.warn("Ticket receta error:", e);
-      alert("No se pudo imprimir el ticket de receta.");
-      return false;
+    // Normalizar recetas para costos indirectos / margen
+    for (const r of db.recetas) {
+      if (!r.indirectos || typeof r.indirectos !== "object") {
+        r.indirectos = { gas: 0, luz: 0, salario: 0, empaque: 0, otros: 0 };
+      } else {
+        r.indirectos.gas = Number(r.indirectos.gas || 0);
+        r.indirectos.luz = Number(r.indirectos.luz || 0);
+        r.indirectos.salario = Number(r.indirectos.salario || 0);
+        r.indirectos.empaque = Number(r.indirectos.empaque || 0);
+        r.indirectos.otros = Number(r.indirectos.otros || 0);
+      }
+      if (r.margenPct == null) r.margenPct = 0;
+      r.margenPct = Number(r.margenPct || 0);
     }
-  };
-})();
+
+    // Normalizar inventario PT con costos
+    for (const it of db.inventarioPT) {
+      if (it.costoDirecto == null) it.costoDirecto = 0;
+      if (it.costoIndirecto == null) it.costoIndirecto = 0;
+      if (it.costoTotal == null) it.costoTotal = Number(it.cantidad || 0) * Number(it.costoUnitario || 0);
+      if (it.costoUnitario == null) {
+        const qty = Number(it.cantidad || 0);
+        it.costoUnitario = qty > 0 ? Number(it.costoTotal || 0) / qty : 0;
+      }
+      if (it.ts == null) it.ts = Date.now();
+      if (it.fechaISO == null) it.fechaISO = new Date(it.ts).toISOString();
+    }
+
+    // Normalizar materias primas (unidad base + conversiones)
+    for (const mp of db.materiasPrimas) {
+      if (!mp.baseUnit) mp.baseUnit = mp.unidadBase || mp.unidad || "g";
+      if (!mp.units) mp.units = { [mp.baseUnit]: 1 };
+      if (mp.units[mp.baseUnit] == null) mp.units[mp.baseUnit] = 1;
+
+      if (mp.stockBase == null) mp.stockBase = Number(mp.stockBase ?? mp.stock ?? 0) || 0;
+      if (mp.stockMinBase == null) mp.stockMinBase = Number(mp.stockMinBase ?? mp.stockMin ?? 0) || 0;
+      if (mp.costoPromBase == null) mp.costoPromBase = Number(mp.costoPromBase ?? 0) || 0;
+
+      if (!mp.categoria) mp.categoria = "GENERAL";
+    }
+
+    // Normalizar recetas (estructura nueva)
+    for (const r of db.recetas) {
+      if (!r.productoFinal) r.productoFinal = r.nombre || "Producto";
+      if (!r.unidadRend) r.unidadRend = "und";
+      if (!Array.isArray(r.ingredientes)) r.ingredientes = [];
+      if (!r.semaforo) r.semaforo = { greenMin: 0, greenMax: 999999, yellowMin: 0, yellowMax: 999999 };
+      if (r.categoria == null) r.categoria = "GENERAL";
+      if (r.rendimientoEsperado == null && r.rendimiento != null) r.rendimientoEsperado = Number(r.rendimiento || 0);
+
+      // ✅ Normalizar ingredientes (compatibilidad con recipes viejas / seed)
+      for (const ing of (r.ingredientes || [])) {
+        if (ing && ing.cantBase == null && ing.cant != null) {
+          ing.cantBase = Number(ing.cant || 0);
+          delete ing.cant;
+        }
+        if (ing && ing.mpId == null && ing.mpNombre) {
+          const name = String(ing.mpNombre || "").trim().toUpperCase();
+          const mpMatch = (db.materiasPrimas || []).find(m => String(m.nombre||"").trim().toUpperCase() === name);
+          if (mpMatch) ing.mpId = mpMatch.id;
+        }
+        if (ing && !ing.mpNombre && ing.mpId) {
+          const mp = (db.materiasPrimas || []).find(m => m.id === ing.mpId);
+          if (mp) ing.mpNombre = mp.nombre;
+        }
+        if (ing && !ing.unidad) {
+          // Si no trae unidad, intenta tomarla de la MP
+          const mp = (db.materiasPrimas || []).find(m => m.id === ing.mpId);
+          ing.unidad = mp?.baseUnit || mp?.unidad || "und";
+        }
+        if (ing && ing.cantBase != null) ing.cantBase = Number(ing.cantBase || 0);
+      }
+    }
+
+    saveDB(db);
+    autoBackupDB();
+  }
+}
+
+function getDB() {
+  return JSON.parse(localStorage.getItem(DB_KEY));
+}
+
+function saveDB(data) {
+  localStorage.setItem(DB_KEY, JSON.stringify(data));
+}
+
+function yyyymmdd(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}${m}${d}`;
+}
+
+function ddmmyyyy(date = new Date()) {
+  const d = String(date.getDate()).padStart(2, "0");
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const y = date.getFullYear();
+  return `${d}/${m}/${y}`;
+}
+
+function getNextEnvioSequence(db) {
+  db = db || getDB();
+  db.configuracion = db.configuracion || {};
+  db.configuracion.correlativos = db.configuracion.correlativos || {};
+
+  var current = Number(db.configuracion.correlativos.ENVIO_GLOBAL || 0);
+  if (current > 0) return current + 1;
+
+  var maxFound = 0;
+  (db.envios || []).forEach(function(e){
+    var id = String(e && e.envioId || "").trim();
+    var match = id.match(/(\d{5})$/);
+    if (match) {
+      var n = Number(match[1]);
+      if (n > maxFound) maxFound = n;
+    }
+  });
+
+  return maxFound + 1;
+}
+
+function generarCorrelativo(prefijo) {
+  const db = getDB();
+  if (!db.configuracion) db.configuracion = { correlativos: {} };
+  if (!db.configuracion.correlativos) db.configuracion.correlativos = {};
+
+  if (String(prefijo || "").toUpperCase() === "ENV") {
+    var seq = getNextEnvioSequence(db);
+    db.configuracion.correlativos.ENVIO_GLOBAL = seq;
+    saveDB(db);
+    autoBackupDB();
+    return `ENVIO-${ddmmyyyy(new Date())}-${String(seq).padStart(5, "0")}`;
+  }
+
+  const hoy = yyyymmdd(new Date());
+  const key = `${prefijo}${hoy}`;
+
+  if (!db.configuracion.correlativos[key]) db.configuracion.correlativos[key] = 1;
+  else db.configuracion.correlativos[key]++;
+
+  saveDB(db);
+  autoBackupDB();
+  return `${prefijo}-${hoy}-${String(db.configuracion.correlativos[key]).padStart(3, "0")}`;
+}
+function exportBackupDB(){
+  const db = getDB();
+  const stamp = new Date().toISOString().slice(0,10);
+  const name = `marck_backup_${stamp}.json`;
+  const blob = new Blob([JSON.stringify(db, null, 2)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+}
+
+function importBackupDB(file){
+  return new Promise((resolve, reject)=>{
+    const r = new FileReader();
+    r.onload = () => {
+      try{
+        const obj = JSON.parse(String(r.result || "{}"));
+        if(!obj || typeof obj !== "object") throw new Error("Backup inválido.");
+
+        const realDB =
+          (obj.keys && obj.keys[DB_KEY] && typeof obj.keys[DB_KEY] === "object")
+            ? obj.keys[DB_KEY]
+            : obj;
+
+        saveDB(realDB);
+        resolve(realDB);
+      }catch(e){
+        reject(e);
+      }
+    };
+    r.onerror = () => reject(new Error("No se pudo leer el archivo."));
+    r.readAsText(file);
+  });
+}
+
+// Backup automático rotativo (últimos 14)
+function autoBackupDB(){
+  try{
+    const db = getDB();
+    const key = "MB_BACKUP_" + yyyymmdd(new Date());
+    localStorage.setItem(key, JSON.stringify(db));
+
+    // limpia backups antiguos (deja 14)
+    const keys = Object.keys(localStorage).filter(k=>k.startsWith("MB_BACKUP_")).sort();
+    while(keys.length > 14){
+      const old = keys.shift();
+      localStorage.removeItem(old);
+    }
+  }catch(e){
+    console.warn("Auto-backup falló:", e);
+  }
+}
