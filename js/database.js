@@ -76,6 +76,7 @@ function initDatabase() {
       producciones: [],
       lotes: [],
       envios: [],
+      despachosAgrupados: [],
       ventas: [],
 
       // NUEVO: MP + compras + logs
@@ -113,6 +114,7 @@ function initDatabase() {
     db.producciones = db.producciones || [];
     db.lotes = db.lotes || [];
     db.envios = db.envios || [];
+    db.despachosAgrupados = db.despachosAgrupados || [];
     db.ventas = db.ventas || [];
 
     db.materiasPrimas = db.materiasPrimas || [];
