@@ -24,6 +24,263 @@ function agregarMemoProduccion(ordenId){
 ========================================================= */
 let _memoTargetOrdenId = null;
 
+let _editProduccionTargetId = null;
+let _reprintEtiquetaTargetId = null;
+
+function _isAdminProduccion(){
+  try{
+    const s = (typeof getSession === "function") ? getSession() : JSON.parse(localStorage.getItem("SESSION") || "null");
+    return String(s?.rol || "").trim().toUpperCase() === "ADMIN";
+  }catch{
+    return false;
+  }
+}
+
+function _getProduccionFechaBase(orden){
+  const iso = orden?.fechaProduccionISO || orden?.fechaISO || null;
+  if (iso) {
+    const d = new Date(iso);
+    if (!isNaN(d.getTime())) return d;
+  }
+  const ts = Number(orden?.ts || orden?.finalTs || Date.now());
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+
+function _formatDateTimeLocal(value){
+  const d = value instanceof Date ? value : new Date(value || Date.now());
+  if (isNaN(d.getTime())) return "";
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function _formatDateLabel(value){
+  const d = value instanceof Date ? value : new Date(value || Date.now());
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleString();
+}
+
+function _syncProduccionRefs(db, orden, prevLote){
+  if (!db || !orden) return;
+
+  const fechaBase = _getProduccionFechaBase(orden);
+  const fechaISO = fechaBase.toISOString();
+  const fechaTxt = fechaBase.toLocaleDateString();
+
+  db.inventarioPT = db.inventarioPT || [];
+  for (const item of db.inventarioPT) {
+    const sameOrden = item && orden.id && item.ordenId === orden.id;
+    const legacyMatch = !sameOrden
+      && item
+      && String(item.producto || "") === String(orden.productoFinal || "")
+      && String(item.lote || "") === String(prevLote || orden.lote || "")
+      && Number(item.cantidad || 0) === Number(orden.real || 0);
+
+    if (sameOrden || legacyMatch) {
+      item.ordenId = orden.id;
+      item.producto = orden.productoFinal;
+      item.lote = orden.lote;
+      item.fecha = fechaTxt;
+      item.fechaISO = fechaISO;
+      item.ts = fechaBase.getTime();
+      item.precioVenta = Number(orden.precioVentaUnitario || item.precioVenta || 0);
+    }
+  }
+
+  db.variacionesRend = db.variacionesRend || [];
+  for (const item of db.variacionesRend) {
+    const sameOrden = item && orden.id && item.ordenId === orden.id;
+    const legacyMatch = !sameOrden
+      && item
+      && String(item.productoFinal || "") === String(orden.productoFinal || "")
+      && String(item.lote || "") === String(prevLote || orden.lote || "")
+      && Number(item.real || 0) === Number(orden.real || 0);
+
+    if (sameOrden || legacyMatch) {
+      item.ordenId = orden.id;
+      item.productoFinal = orden.productoFinal;
+      item.recetaNombre = orden.recetaNombre;
+      item.lote = orden.lote;
+      item.fechaISO = fechaISO;
+      item.fecha = fechaTxt;
+      item.ts = fechaBase.getTime();
+    }
+  }
+}
+
+function openEditarProduccionModal(ordenId){
+  if(!_isAdminProduccion()){
+    alert("Solo ADMIN puede editar lote y fecha de producción.");
+    return;
+  }
+
+  const db = getDB();
+  const orden = (db.producciones || []).find(p => p.id === ordenId);
+  if(!orden){ alert("Orden no encontrada"); return; }
+
+  _editProduccionTargetId = ordenId;
+
+  const modal = document.getElementById("editProdModal");
+  const meta  = document.getElementById("editProdMeta");
+  const lote  = document.getElementById("editProdLote");
+  const fecha = document.getElementById("editProdFecha");
+  const msg   = document.getElementById("editProdMsg");
+
+  if(!modal || !meta || !lote || !fecha || !msg){
+    alert("No se encontró el modal de edición.");
+    return;
+  }
+
+  meta.textContent = `${orden.productoFinal || ""} • PRD: ${orden.id || ""}`;
+  lote.value = String(orden.lote || "");
+  fecha.value = _formatDateTimeLocal(_getProduccionFechaBase(orden));
+  msg.textContent = "";
+  modal.style.display = "block";
+}
+
+function closeEditarProduccionModal(){
+  const modal = document.getElementById("editProdModal");
+  if(modal) modal.style.display = "none";
+  _editProduccionTargetId = null;
+}
+
+function saveEditarProduccionModal(){
+  if(!_isAdminProduccion()){
+    alert("Solo ADMIN puede editar lote y fecha de producción.");
+    return;
+  }
+  if(!_editProduccionTargetId) return;
+
+  const msg = document.getElementById("editProdMsg");
+  const loteNuevo = String(document.getElementById("editProdLote")?.value || "").trim();
+  const fechaLocal = String(document.getElementById("editProdFecha")?.value || "").trim();
+
+  if(!loteNuevo){ if(msg) msg.textContent = "Ingresa el lote."; return; }
+  if(!fechaLocal){ if(msg) msg.textContent = "Ingresa la fecha de producción."; return; }
+
+  const fecha = new Date(fechaLocal);
+  if(isNaN(fecha.getTime())){ if(msg) msg.textContent = "Fecha inválida."; return; }
+
+  const db = getDB();
+  db.producciones = db.producciones || [];
+  const idx = db.producciones.findIndex(p => p.id === _editProduccionTargetId);
+  if(idx === -1){ if(msg) msg.textContent = "Orden no encontrada."; return; }
+
+  const orden = db.producciones[idx];
+  const prevLote = orden.lote;
+
+  orden.lote = loteNuevo;
+  orden.fechaProduccionISO = fecha.toISOString();
+  orden.ts = fecha.getTime();
+  orden.editadoAdminTs = Date.now();
+  orden.editadoAdminPor = getUserName();
+  orden.historialEdicionesAdmin = Array.isArray(orden.historialEdicionesAdmin) ? orden.historialEdicionesAdmin : [];
+  orden.historialEdicionesAdmin.push({
+    ts: Date.now(),
+    usuario: getUserName(),
+    prevLote: prevLote || "",
+    newLote: loteNuevo,
+    fechaProduccionISO: orden.fechaProduccionISO
+  });
+
+  _syncProduccionRefs(db, orden, prevLote);
+  saveDB(db);
+
+  closeEditarProduccionModal();
+  if (typeof renderProduccionesFiltradasEnLista === "function" && document.getElementById("produccionesList")?.innerHTML?.includes("panel")) {
+    renderProduccionesFiltradasEnLista();
+  }
+  cargarProducciones();
+}
+
+function openReimprimirEtiquetasModal(ordenId){
+  if(!_isAdminProduccion()){
+    alert("Solo ADMIN puede reimprimir etiquetas.");
+    return;
+  }
+
+  const db = getDB();
+  const orden = (db.producciones || []).find(p => p.id === ordenId);
+  if(!orden){ alert("Orden no encontrada"); return; }
+  if(String(orden.status || "") !== "FINALIZADA"){
+    alert("Solo puedes reimprimir etiquetas de órdenes finalizadas.");
+    return;
+  }
+
+  _reprintEtiquetaTargetId = ordenId;
+
+  const modal = document.getElementById("reprintEtiModal");
+  const meta  = document.getElementById("reprintEtiMeta");
+  const motivo = document.getElementById("reprintEtiMotivo");
+  const msg   = document.getElementById("reprintEtiMsg");
+
+  if(!modal || !meta || !motivo || !msg){
+    alert("No se encontró el modal de reimpresión.");
+    return;
+  }
+
+  meta.textContent = `${orden.productoFinal || ""} • Lote: ${orden.lote || ""} • Cantidad: ${Number(orden.real || 0)}`;
+  motivo.value = "";
+  msg.textContent = "";
+  modal.style.display = "block";
+}
+
+function closeReimprimirEtiquetasModal(){
+  const modal = document.getElementById("reprintEtiModal");
+  if(modal) modal.style.display = "none";
+  _reprintEtiquetaTargetId = null;
+}
+
+function confirmarReimpresionEtiquetas(){
+  if(!_isAdminProduccion()){
+    alert("Solo ADMIN puede reimprimir etiquetas.");
+    return;
+  }
+  if(!_reprintEtiquetaTargetId) return;
+
+  const msg = document.getElementById("reprintEtiMsg");
+  const motivo = String(document.getElementById("reprintEtiMotivo")?.value || "").trim();
+  if(!motivo){ if(msg) msg.textContent = "Ingresa el motivo de reimpresión."; return; }
+
+  const db = getDB();
+  db.producciones = db.producciones || [];
+  const orden = db.producciones.find(p => p.id === _reprintEtiquetaTargetId);
+  if(!orden){ if(msg) msg.textContent = "Orden no encontrada."; return; }
+  if(String(orden.status || "") !== "FINALIZADA"){ if(msg) msg.textContent = "La orden debe estar finalizada."; return; }
+
+  orden.reimpresionesEtiquetas = Array.isArray(orden.reimpresionesEtiquetas) ? orden.reimpresionesEtiquetas : [];
+  orden.reimpresionesEtiquetas.push({
+    ts: Date.now(),
+    usuario: getUserName(),
+    motivo,
+    cantidad: Number(orden.real || 0),
+    lote: orden.lote || "",
+    fechaProduccionISO: orden.fechaProduccionISO || _getProduccionFechaBase(orden).toISOString()
+  });
+
+  saveDB(db);
+
+  try {
+    if (typeof imprimirEtiquetas2x4 === "function") {
+      imprimirEtiquetas2x4({
+        producto: orden.productoFinal,
+        lote: orden.lote,
+        fechaISO: orden.fechaProduccionISO || _getProduccionFechaBase(orden).toISOString(),
+        cantidad: Number(orden.real || 0)
+      });
+    } else if (typeof imprimirEtiquetasProducto === "function") {
+      imprimirEtiquetasProducto(orden.productoFinal, orden.lote, Number(orden.real || 0), orden.fechaProduccionISO || _getProduccionFechaBase(orden).toISOString());
+    } else if (typeof imprimirEtiqueta === "function") {
+      imprimirEtiqueta(orden.productoFinal, orden.lote, Number(orden.real || 0));
+    }
+  } catch (e) {
+    console.warn("No se pudo reimprimir etiquetas:", e);
+  }
+
+  closeReimprimirEtiquetasModal();
+}
+
+
 function openMemoModal(ordenId){
   const db = getDB();
   const orden = (db.producciones || []).find(p => p.id === ordenId);
@@ -317,6 +574,9 @@ function normalizeProducciones() {
     if (!p.id) p.id = String(p.ordenId || p.lote || ("PRD-" + Date.now()));
     if (!p.productoFinal) p.productoFinal = p.producto || p.recetaNombre || "PRODUCTO";
     if (!p.unidad) p.unidad = p.unidadRend || "und";
+    if (!p.fechaProduccionISO) p.fechaProduccionISO = _getProduccionFechaBase(p).toISOString();
+    p.reimpresionesEtiquetas = Array.isArray(p.reimpresionesEtiquetas) ? p.reimpresionesEtiquetas : [];
+    p.historialEdicionesAdmin = Array.isArray(p.historialEdicionesAdmin) ? p.historialEdicionesAdmin : [];
 
     // campos antiguos
     if (p.real == null && p.rendReal != null) p.real = Number(p.rendReal);
@@ -660,6 +920,59 @@ function renderProduccion() {
     </div>
   </div>
 </div>
+
+<div id="editProdModal" class="mb-modal" style="display:none;">
+  <div class="mb-backdrop" onclick="closeEditarProduccionModal()"></div>
+  <div class="mb-card">
+    <div class="mb-head">
+      <img src="assets/MARCK1.png" class="mb-logo" onerror="this.style.display='none'">
+      <div>
+        <div class="mb-title">Editar lote y fecha</div>
+        <div id="editProdMeta" class="mb-sub"></div>
+      </div>
+      <button class="btn sm" onclick="closeEditarProduccionModal()">✖</button>
+    </div>
+    <div class="mb-body">
+      <label>Lote</label>
+      <input id="editProdLote" placeholder="Ej: LP-20260330-001">
+
+      <label style="margin-top:10px;">Fecha y hora de producción</label>
+      <input id="editProdFecha" type="datetime-local">
+
+      <div class="row" style="margin-top:12px;">
+        <button class="btn accent" onclick="saveEditarProduccionModal()">💾 Guardar cambios</button>
+        <button class="btn" onclick="closeEditarProduccionModal()">Cancelar</button>
+      </div>
+
+      <div id="editProdMsg" class="muted small" style="margin-top:10px;"></div>
+    </div>
+  </div>
+</div>
+
+<div id="reprintEtiModal" class="mb-modal" style="display:none;">
+  <div class="mb-backdrop" onclick="closeReimprimirEtiquetasModal()"></div>
+  <div class="mb-card">
+    <div class="mb-head">
+      <img src="assets/MARCK1.png" class="mb-logo" onerror="this.style.display='none'">
+      <div>
+        <div class="mb-title">Reimprimir etiquetas</div>
+        <div id="reprintEtiMeta" class="mb-sub"></div>
+      </div>
+      <button class="btn sm" onclick="closeReimprimirEtiquetasModal()">✖</button>
+    </div>
+    <div class="mb-body">
+      <label>Motivo de reimpresión</label>
+      <textarea id="reprintEtiMotivo" rows="4" placeholder="Ej: etiqueta dañada, impresión incompleta, corrección autorizada por administración"></textarea>
+
+      <div class="row" style="margin-top:12px;">
+        <button class="btn accent" onclick="confirmarReimpresionEtiquetas()">🖨️ Reimprimir</button>
+        <button class="btn" onclick="closeReimprimirEtiquetasModal()">Cancelar</button>
+      </div>
+
+      <div id="reprintEtiMsg" class="muted small" style="margin-top:10px;"></div>
+    </div>
+  </div>
+</div>
     <div class="panel" style="margin-top:14px;">
       <div class="big" style="font-size:16px;">Órdenes recientes</div>
       <div id="produccionesList" style="margin-top:10px;"></div>
@@ -753,6 +1066,7 @@ function generarOrdenProduccion() {
 
   const ordenId = nextCorrelativoPorProducto(db, "PRD", productoFinal);
   const lote = nextCorrelativoPorProducto(db, "LP", productoFinal);
+  const fechaCreacion = new Date();
 
   db.producciones = db.producciones || [];
   db.producciones.push({
@@ -784,7 +1098,8 @@ function generarOrdenProduccion() {
     margenPct: Number(receta.margenPct || 0),
     precioVentaUnitario: precioVentaUnitario,
     creadoPor: getUserName(),
-    ts: Date.now()
+    fechaProduccionISO: fechaCreacion.toISOString(),
+    ts: fechaCreacion.getTime()
   });
 
   saveDB(db);
@@ -831,7 +1146,7 @@ function cargarProducciones() {
   `
   : "";
 
-    const fecha = p.ts ? new Date(p.ts).toLocaleString() : "—";
+    const fecha = _formatDateLabel(_getProduccionFechaBase(p));
     const esperado = Number(p.esperado || 0);
     const real = (p.real == null) ? null : Number(p.real || 0);
 
@@ -879,6 +1194,7 @@ function cargarProducciones() {
             <button class="btn" onclick="finalizarProduccion('${escapeHtml(p.id)}')">✅ Finalizar</button>
             <button class="btn danger" onclick="cancelarOrden('${escapeHtml(p.id)}')">✖ Cancelar</button>
             <button class="btn secondary" onclick="agregarMemoProduccion('${escapeHtml(p.id)}')">📝 Memo</button>
+            ${_isAdminProduccion() ? `<button class="btn secondary" onclick="openEditarProduccionModal('${escapeHtml(p.id)}')">🛠 Editar lote/fecha</button>` : ``}
           </div>
           <div class="muted small" style="margin-top:8px;">
             * Al finalizar: si Real = Esperado → VERDE. Si es mayor o menor → ROJO.
@@ -886,6 +1202,8 @@ function cargarProducciones() {
         ` : `
           <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
             <button class="btn secondary sm" onclick="agregarMemoProduccion('${escapeHtml(p.id)}')">📝 Memo</button>
+            ${_isAdminProduccion() ? `<button class="btn secondary sm" onclick="openEditarProduccionModal('${escapeHtml(p.id)}')">🛠 Editar lote/fecha</button>` : ``}
+            ${_isAdminProduccion() ? `<button class="btn accent sm" onclick="openReimprimirEtiquetasModal('${escapeHtml(p.id)}')">🖨️ Reimprimir etiquetas</button>` : ``}
           </div>
         `}
 
@@ -967,7 +1285,7 @@ function renderProduccionesFiltradasEnLista(){
   if(!box){ cargarProducciones(); return; }
 
   const html = list.map(p => {
-    const fecha = p.ts ? new Date(p.ts).toLocaleString() : "—";
+    const fecha = _formatDateLabel(_getProduccionFechaBase(p));
     const esperado = Number(p.esperado || 0);
     const real = (p.real == null) ? null : Number(p.real || 0);
 
@@ -1022,15 +1340,25 @@ function renderProduccionesFiltradasEnLista(){
 
         ${p.status === "EN_PROCESO" ? `
           <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <input type="number" step="1" class="real-input" data-orden="${escapeHtml(p.id)}"
-              placeholder="Cantidad real obtenida" style="width:220px;">
+            <input type="number"
+                   step="1"
+                   class="real-input"
+                   data-orden="${escapeHtml(p.id)}"
+                   placeholder="Cantidad real obtenida"
+                   style="width:220px;">
             <button class="btn" onclick="finalizarProduccion('${escapeHtml(p.id)}')">✅ Finalizar</button>
             <button class="btn danger" onclick="cancelarOrden('${escapeHtml(p.id)}')">✖ Cancelar</button>
             <button class="btn secondary" onclick="agregarMemoProduccion('${escapeHtml(p.id)}')">📝 Memo</button>
+            ${_isAdminProduccion() ? `<button class="btn secondary" onclick="openEditarProduccionModal('${escapeHtml(p.id)}')">🛠 Editar lote/fecha</button>` : ``}
+          </div>
+          <div class="muted small" style="margin-top:8px;">
+            * Al finalizar: si Real = Esperado → VERDE. Si es mayor o menor → ROJO.
           </div>
         ` : `
           <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
             <button class="btn secondary sm" onclick="agregarMemoProduccion('${escapeHtml(p.id)}')">📝 Memo</button>
+            ${_isAdminProduccion() ? `<button class="btn secondary sm" onclick="openEditarProduccionModal('${escapeHtml(p.id)}')">🛠 Editar lote/fecha</button>` : ``}
+            ${_isAdminProduccion() ? `<button class="btn accent sm" onclick="openReimprimirEtiquetasModal('${escapeHtml(p.id)}')">🖨️ Reimprimir etiquetas</button>` : ``}
           </div>
         `}
 
@@ -1192,6 +1520,8 @@ function finalizarProduccion(ordenId) {
   const costoIndirecto = Number(orden.costoIndirectoEstimado || 0);
   const costoTotal = costoDirecto + costoIndirecto;
   const costoUnitario = real > 0 ? (costoTotal / real) : 0;
+  const fechaBase = _getProduccionFechaBase(orden);
+  const fechaBaseISO = fechaBase.toISOString();
 
   orden.real = real;
   orden.diff = diff;
@@ -1199,6 +1529,7 @@ function finalizarProduccion(ordenId) {
   orden.statusSem = statusSem;
   orden.finalizadoPor = getUserName();
   orden.finalTs = Date.now();
+  orden.fechaProduccionISO = orden.fechaProduccionISO || fechaBaseISO;
   orden.costoDirectoReal = costoDirecto;
   orden.costoIndirectoReal = costoIndirecto;
   orden.costoTotalReal = costoTotal;
@@ -1206,12 +1537,13 @@ function finalizarProduccion(ordenId) {
 
   db.inventarioPT = db.inventarioPT || [];
   db.inventarioPT.push({
+    ordenId: orden.id,
     producto: orden.productoFinal,
     cantidad: real,
     lote: orden.lote,
-    fecha: new Date().toLocaleDateString(),
-    fechaISO: new Date().toISOString(),
-    ts: Date.now(),
+    fecha: fechaBase.toLocaleDateString(),
+    fechaISO: fechaBaseISO,
+    ts: fechaBase.getTime(),
     costoDirecto: costoDirecto,
     costoIndirecto: costoIndirecto,
     costoTotal: costoTotal,
@@ -1221,7 +1553,10 @@ function finalizarProduccion(ordenId) {
 
   db.variacionesRend = db.variacionesRend || [];
   db.variacionesRend.push({
-    fechaISO: new Date().toISOString(),
+    ordenId: orden.id,
+    fechaISO: fechaBaseISO,
+    fecha: fechaBase.toLocaleDateString(),
+    ts: fechaBase.getTime(),
     usuario: getUserName(),
     recetaNombre: orden.recetaNombre,
     productoFinal: orden.productoFinal,
@@ -1244,7 +1579,7 @@ function finalizarProduccion(ordenId) {
       imprimirEtiquetas2x4({
         producto: orden.productoFinal,
         lote: orden.lote,
-        fechaISO: new Date().toISOString(),
+        fechaISO: orden.fechaProduccionISO || fechaBaseISO,
         cantidad: real
       });
     } else if (typeof imprimirEtiquetasProducto === "function") {
