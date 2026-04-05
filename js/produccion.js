@@ -543,26 +543,59 @@ function nextCorrelativoPorProducto(db, prefijo, productoFinal) {
 
   const key = `${prefijo}-${hoy}||${prodKey}`;
 
-  // ✅ Si no existe contador, reconstruirlo desde producciones existentes
-  if (db.configuracion.correlativos[key] == null) {
-    let max = 0;
-    for (const p of (db.producciones || [])) {
-      const id = String((prefijo === "LP" ? p.lote : p.id) || "");
-      // busca: LP-yyyymmdd-###
-      if (!id.startsWith(`${prefijo}-${hoy}-`)) continue;
-      if (_slugProd(p.productoFinal) !== prodKey) continue;
+  let maxExistente = 0;
+  for (const p of (db.producciones || [])) {
+    const valor = String((prefijo === "LP" ? p.lote : p.id) || "");
+    if (!valor.startsWith(`${prefijo}-${hoy}-`)) continue;
+    if (_slugProd(p.productoFinal) !== prodKey) continue;
+    if (prefijo === "LP" && p.omitirEnCorrelativoLote === true) continue;
 
-      const n = Number(id.split("-").pop() || 0);
-      if (n > max) max = n;
-    }
-    db.configuracion.correlativos[key] = max; // queda listo para continuar
+    const n = Number(valor.split("-").pop() || 0);
+    if (n > maxExistente) maxExistente = n;
   }
 
-  const current = Number(db.configuracion.correlativos[key] || 0) + 1;
+  const guardado = Number(db.configuracion.correlativos[key] || 0);
+  const base = Math.max(guardado, maxExistente);
+  const current = base + 1;
   db.configuracion.correlativos[key] = current;
 
   return `${prefijo}-${hoy}-${String(current).padStart(3, "0")}`;
 }
+
+function _correlativoKey(prefijo, fechaYmd, productoFinal){
+  return `${prefijo}-${fechaYmd}||${_slugProd(productoFinal)}`;
+}
+
+function _parseCorrelativoMeta(valor, prefijoEsperado){
+  const txt = String(valor || "").trim().toUpperCase();
+  const m = txt.match(/^([A-Z]+)-(\d{8})-(\d+)$/);
+  if(!m) return null;
+  if(prefijoEsperado && m[1] !== String(prefijoEsperado).trim().toUpperCase()) return null;
+  return { prefijo: m[1], fechaYmd: m[2], numero: Number(m[3] || 0) };
+}
+
+function _rebuildCorrelativoPorProducto(db, prefijo, productoFinal, fechaYmd){
+  db = db || getDB();
+  if(!fechaYmd || !productoFinal) return 0;
+
+  db.configuracion = db.configuracion || {};
+  db.configuracion.correlativos = db.configuracion.correlativos || {};
+
+  let max = 0;
+  for (const p of (db.producciones || [])) {
+    if (_slugProd(p.productoFinal) !== _slugProd(productoFinal)) continue;
+    if (prefijo === "LP" && p.omitirEnCorrelativoLote === true) continue;
+
+    const valor = String((prefijo === "LP" ? p.lote : p.id) || "");
+    const meta = _parseCorrelativoMeta(valor, prefijo);
+    if (!meta || meta.fechaYmd !== fechaYmd) continue;
+    if (meta.numero > max) max = meta.numero;
+  }
+
+  db.configuracion.correlativos[_correlativoKey(prefijo, fechaYmd, productoFinal)] = max;
+  return max;
+}
+
 /* =========================================================
    MIGRACIÓN SUAVE / NORMALIZACIÓN (para datos viejos)
 ========================================================= */
@@ -1195,6 +1228,7 @@ function cargarProducciones() {
             <button class="btn danger" onclick="cancelarOrden('${escapeHtml(p.id)}')">✖ Cancelar</button>
             <button class="btn secondary" onclick="agregarMemoProduccion('${escapeHtml(p.id)}')">📝 Memo</button>
             ${_isAdminProduccion() ? `<button class="btn secondary" onclick="openEditarProduccionModal('${escapeHtml(p.id)}')">🛠 Editar lote/fecha</button>` : ``}
+            ${_isAdminProduccion() ? `<button class="btn danger" onclick="deleteProduccionAdmin('${escapeHtml(p.id)}')">🗑 Eliminar orden</button>` : ``}
           </div>
           <div class="muted small" style="margin-top:8px;">
             * Al finalizar: si Real = Esperado → VERDE. Si es mayor o menor → ROJO.
@@ -1204,6 +1238,7 @@ function cargarProducciones() {
             <button class="btn secondary sm" onclick="agregarMemoProduccion('${escapeHtml(p.id)}')">📝 Memo</button>
             ${_isAdminProduccion() ? `<button class="btn secondary sm" onclick="openEditarProduccionModal('${escapeHtml(p.id)}')">🛠 Editar lote/fecha</button>` : ``}
             ${_isAdminProduccion() ? `<button class="btn accent sm" onclick="openReimprimirEtiquetasModal('${escapeHtml(p.id)}')">🖨️ Reimprimir etiquetas</button>` : ``}
+            ${_isAdminProduccion() ? `<button class="btn danger sm" onclick="deleteProduccionAdmin('${escapeHtml(p.id)}')">🗑 Eliminar orden</button>` : ``}
           </div>
         `}
 
@@ -1350,6 +1385,7 @@ function renderProduccionesFiltradasEnLista(){
             <button class="btn danger" onclick="cancelarOrden('${escapeHtml(p.id)}')">✖ Cancelar</button>
             <button class="btn secondary" onclick="agregarMemoProduccion('${escapeHtml(p.id)}')">📝 Memo</button>
             ${_isAdminProduccion() ? `<button class="btn secondary" onclick="openEditarProduccionModal('${escapeHtml(p.id)}')">🛠 Editar lote/fecha</button>` : ``}
+            ${_isAdminProduccion() ? `<button class="btn danger" onclick="deleteProduccionAdmin('${escapeHtml(p.id)}')">🗑 Eliminar orden</button>` : ``}
           </div>
           <div class="muted small" style="margin-top:8px;">
             * Al finalizar: si Real = Esperado → VERDE. Si es mayor o menor → ROJO.
@@ -1359,6 +1395,7 @@ function renderProduccionesFiltradasEnLista(){
             <button class="btn secondary sm" onclick="agregarMemoProduccion('${escapeHtml(p.id)}')">📝 Memo</button>
             ${_isAdminProduccion() ? `<button class="btn secondary sm" onclick="openEditarProduccionModal('${escapeHtml(p.id)}')">🛠 Editar lote/fecha</button>` : ``}
             ${_isAdminProduccion() ? `<button class="btn accent sm" onclick="openReimprimirEtiquetasModal('${escapeHtml(p.id)}')">🖨️ Reimprimir etiquetas</button>` : ``}
+            ${_isAdminProduccion() ? `<button class="btn danger sm" onclick="deleteProduccionAdmin('${escapeHtml(p.id)}')">🗑 Eliminar orden</button>` : ``}
           </div>
         `}
 
@@ -1498,12 +1535,18 @@ function finalizarProduccion(ordenId) {
   const db = getDB();
 
   db.producciones = db.producciones || [];
-  const idx = db.producciones.findIndex(x => x.id === ordenId);
-  if (idx === -1) { alert("Orden no encontrada"); return; }
 
+  const matches = db.producciones
+    .map((x, i) => ({ x, i }))
+    .filter(row => String(row.x.id || "") === String(ordenId || ""));
+
+  if (!matches.length) { alert("Orden no encontrada"); return; }
+
+  const abierta = matches.filter(row => String(row.x.status || "") === "EN_PROCESO");
+  const idx = (abierta.length ? abierta[abierta.length - 1] : matches[matches.length - 1]).i;
   const orden = db.producciones[idx];
 
-  if (orden.status !== "EN_PROCESO") {
+  if (String(orden.status || "") !== "EN_PROCESO") {
     alert("Esta orden ya está finalizada.");
     return;
   }
@@ -1536,41 +1579,55 @@ function finalizarProduccion(ordenId) {
   orden.costoUnitarioReal = costoUnitario;
 
   db.inventarioPT = db.inventarioPT || [];
-  db.inventarioPT.push({
-    ordenId: orden.id,
-    producto: orden.productoFinal,
-    cantidad: real,
-    lote: orden.lote,
-    fecha: fechaBase.toLocaleDateString(),
-    fechaISO: fechaBaseISO,
-    ts: fechaBase.getTime(),
-    costoDirecto: costoDirecto,
-    costoIndirecto: costoIndirecto,
-    costoTotal: costoTotal,
-    costoUnitario: costoUnitario,
-    precioVenta: Number(orden.precioVentaUnitario || 0)
+  const yaExistePT = db.inventarioPT.some(function(it){
+    return String(it.ordenId || "") === String(orden.id || "")
+      && String(it.lote || "") === String(orden.lote || "")
+      && String(it.producto || "") === String(orden.productoFinal || "");
   });
+  if (!yaExistePT) {
+    db.inventarioPT.push({
+      ordenId: orden.id,
+      producto: orden.productoFinal,
+      cantidad: real,
+      lote: orden.lote,
+      fecha: fechaBase.toLocaleDateString(),
+      fechaISO: fechaBaseISO,
+      ts: fechaBase.getTime(),
+      costoDirecto: costoDirecto,
+      costoIndirecto: costoIndirecto,
+      costoTotal: costoTotal,
+      costoUnitario: costoUnitario,
+      precioVenta: Number(orden.precioVentaUnitario || 0)
+    });
+  }
 
   db.variacionesRend = db.variacionesRend || [];
-  db.variacionesRend.push({
-    ordenId: orden.id,
-    fechaISO: fechaBaseISO,
-    fecha: fechaBase.toLocaleDateString(),
-    ts: fechaBase.getTime(),
-    usuario: getUserName(),
-    recetaNombre: orden.recetaNombre,
-    productoFinal: orden.productoFinal,
-    lote: orden.lote,
-    esperado,
-    real,
-    diff,
-    status: statusSem,
-    comentario: orden.comentario || "",
-    costoDirecto: costoDirecto,
-    costoIndirecto: costoIndirecto,
-    costoTotal: costoTotal,
-    costoUnitario: costoUnitario
+  const yaExisteVariacion = db.variacionesRend.some(function(v){
+    return String(v.ordenId || "") === String(orden.id || "")
+      && String(v.lote || "") === String(orden.lote || "")
+      && String(v.productoFinal || "") === String(orden.productoFinal || "");
   });
+  if (!yaExisteVariacion) {
+    db.variacionesRend.push({
+      ordenId: orden.id,
+      fechaISO: fechaBaseISO,
+      fecha: fechaBase.toLocaleDateString(),
+      ts: fechaBase.getTime(),
+      usuario: getUserName(),
+      recetaNombre: orden.recetaNombre,
+      productoFinal: orden.productoFinal,
+      lote: orden.lote,
+      esperado,
+      real,
+      diff,
+      status: statusSem,
+      comentario: orden.comentario || "",
+      costoDirecto: costoDirecto,
+      costoIndirecto: costoIndirecto,
+      costoTotal: costoTotal,
+      costoUnitario: costoUnitario
+    });
+  }
 
   saveDB(db);
 
@@ -1593,8 +1650,11 @@ function finalizarProduccion(ordenId) {
     console.warn("No se pudo imprimir etiquetas:", e);
   }
 
-  cargarProducciones();
-  loadView("inventarioPT");
+  if (document.getElementById("produccionesList")) {
+    cargarProducciones();
+  } else {
+    loadView("produccion");
+  }
 }
 
 /* =========================================================
@@ -1628,6 +1688,71 @@ async function cancelarOrden(ordenId) {
   db.producciones.splice(idx, 1);
   saveDB(db);
 
+  cargarProducciones();
+  loadView("produccion");
+}
+
+async function deleteProduccionAdmin(ordenId) {
+  normalizeProducciones();
+
+  if(!_isAdminProduccion()){
+    alert("Solo ADMIN puede eliminar órdenes de producción.");
+    return;
+  }
+
+  const db = getDB();
+  db.producciones = db.producciones || [];
+  db.inventarioPT = db.inventarioPT || [];
+  db.variacionesRend = db.variacionesRend || [];
+
+  const idx = db.producciones.findIndex(x => x.id === ordenId);
+  if (idx === -1) { alert("Orden no encontrada"); return; }
+
+  const orden = db.producciones[idx];
+  const finalizada = String(orden.status || "") === "FINALIZADA";
+  const txtEstado = finalizada ? "FINALIZADA" : "EN_PROCESO";
+  const msg = finalizada
+    ? "Esta acción eliminará la orden, revertirá la materia prima consumida, borrará el inventario PT generado por ese lote y ajustará el correlativo para poder reutilizar el lote si corresponde."
+    : "Esta acción eliminará la orden y revertirá la materia prima consumida.";
+
+  const ok = await mbConfirm(`¿Eliminar la orden ${orden.id || ""} (${txtEstado})?\n\n${msg}`, "Eliminar orden de producción");
+  if (!ok) return;
+
+  for (const c of (orden.consumosMP || [])) {
+    const mp = (db.materiasPrimas || []).find(m => m.id === c.mpId);
+    if (mp) {
+      mp.stockBase = Number(mp.stockBase ?? mp.stock ?? 0) + Number(c.cantidadBase || 0);
+      mp.stock = Number(mp.stockBase || 0);
+    }
+  }
+
+  const prevIdMeta = _parseCorrelativoMeta(orden.id, "PRD");
+  const prevLoteMeta = _parseCorrelativoMeta(orden.lote, "LP");
+
+  if (finalizada) {
+    db.inventarioPT = db.inventarioPT.filter(item => {
+      const sameOrder = orden.id && item && item.ordenId === orden.id;
+      const sameLote = !sameOrder
+        && String(item?.producto || "") === String(orden.productoFinal || "")
+        && String(item?.lote || "") === String(orden.lote || "");
+      return !(sameOrder || sameLote);
+    });
+
+    db.variacionesRend = db.variacionesRend.filter(item => {
+      const sameOrder = orden.id && item && item.ordenId === orden.id;
+      const sameLote = !sameOrder
+        && String(item?.productoFinal || "") === String(orden.productoFinal || "")
+        && String(item?.lote || "") === String(orden.lote || "");
+      return !(sameOrder || sameLote);
+    });
+  }
+
+  db.producciones.splice(idx, 1);
+
+  if (prevIdMeta) _rebuildCorrelativoPorProducto(db, "PRD", orden.productoFinal, prevIdMeta.fechaYmd);
+  if (prevLoteMeta) _rebuildCorrelativoPorProducto(db, "LP", orden.productoFinal, prevLoteMeta.fechaYmd);
+
+  saveDB(db);
   cargarProducciones();
   loadView("produccion");
 }
