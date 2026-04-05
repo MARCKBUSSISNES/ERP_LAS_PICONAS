@@ -6,9 +6,44 @@ function canEditMP(){
   return isAdmin?.() || can?.("mp_editar");
 }
 
+function _parseMPNumericId(value){
+  const s = String(value || "").trim().toUpperCase();
+  const m = s.match(/^MP-(\d+)$/);
+  return m ? Number(m[1]) : 0;
+}
+
+function _nextMateriaPrimaId(db){
+  db = db || getDB();
+  const list = db.materiasPrimas || [];
+  let maxNum = 0;
+
+  for(const mp of list){
+    const n = _parseMPNumericId(mp?.id);
+    if(n > maxNum) maxNum = n;
+  }
+
+  return `MP-${String(maxNum + 1).padStart(5, "0")}`;
+}
+
+function _syncMateriaPrimaIdField(){
+  const el = document.getElementById("mpId");
+  if(!el) return;
+
+  if(editMPIndex == null){
+    const db = getDB();
+    el.value = _nextMateriaPrimaId(db);
+    el.readOnly = true;
+    el.setAttribute("readonly", "readonly");
+  }else{
+    el.readOnly = true;
+    el.setAttribute("readonly", "readonly");
+  }
+}
+
 function renderMateriasPrimas(){
   const db = getDB();
   const list = (db.materiasPrimas||[]);
+  const nextId = editMPIndex==null ? _nextMateriaPrimaId(db) : "";
 
   const rows = list.map((m,i)=>`
     <tr>
@@ -46,7 +81,7 @@ function renderMateriasPrimas(){
       <div class="grid-2">
         <div>
           <label>ID</label>
-          <input id="mpId" placeholder="MP-0001" ${editable?``:`disabled`}>
+          <input id="mpId" placeholder="MP-00001" value="${editable && editMPIndex==null ? escapeHtml(nextId) : ""}" ${editable?`readonly`:`disabled`}>
 
           <label>Nombre</label>
           <input id="mpNombre" placeholder="TOMATE" ${editable?``:`disabled`}>
@@ -92,24 +127,26 @@ function saveMP(){
   const db = getDB();
   db.materiasPrimas = db.materiasPrimas || [];
 
-  const id = (document.getElementById("mpId").value||"").trim();
   const nombre = (document.getElementById("mpNombre").value||"").trim();
 
-  if(!id || !nombre){
-    alert("ID y Nombre son obligatorios");
+  if(!nombre){
+    alert("El nombre es obligatorio");
     return;
   }
+
+  const id = editMPIndex!=null
+    ? String((db.materiasPrimas[editMPIndex]||{}).id || (document.getElementById("mpId").value||"").trim())
+    : _nextMateriaPrimaId(db);
 
   const baseUnit = normalizeUnitCode((document.getElementById("mpUnidad").value||"").trim() || "UND");
   const stockBase = Number(document.getElementById("mpStock").value||0);
   const stockMinBase = Number(document.getElementById("mpMin").value||0);
   const costoPromBase = Number(document.getElementById("mpCosto").value||0);
 
-  // evita duplicar ID si estás creando
   if(editMPIndex==null){
-    const exists = db.materiasPrimas.some(m => String(m.id||"").toUpperCase() === id.toUpperCase());
+    const exists = db.materiasPrimas.some(m => String(m.id||"").toUpperCase() === String(id).toUpperCase());
     if(exists){
-      alert("Ese ID ya existe. Usa otro o edita el registro.");
+      alert("No se pudo generar un ID único para la materia prima. Intenta nuevamente.");
       return;
     }
   }
@@ -146,7 +183,7 @@ function saveMP(){
   }
 
   saveDB(db);
-  toast?.(editMPIndex!=null ? "✅ MP actualizada" : "✅ MP agregada");
+  toast?.(editMPIndex!=null ? "✅ MP actualizada" : `✅ MP agregada (${id})`);
 
   cancelEditMP();
   loadView("mp");
@@ -162,6 +199,8 @@ function editMP(i){
   editMPIndex = i;
 
   document.getElementById("mpId").value = m.id || "";
+  document.getElementById("mpId").readOnly = true;
+  document.getElementById("mpId").setAttribute("readonly", "readonly");
   document.getElementById("mpNombre").value = m.nombre || "";
   document.getElementById("mpUnidad").value = m.baseUnit || m.unidad || "und";
   document.getElementById("mpStock").value = Number(m.stockBase ?? m.stock ?? 0);
@@ -185,6 +224,8 @@ function cancelEditMP(){
 
   const btn = document.getElementById("btnSaveMP");
   if(btn) btn.textContent = "Agregar MP";
+
+  _syncMateriaPrimaIdField();
 }
 
 function delMP(i){
