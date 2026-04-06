@@ -33,6 +33,11 @@ function renderInventarioPT(){
             <div class="muted small">Costo Total</div>
             <div style="font-weight:800;color:#fff;">${money(l.costoTotal || 0)}</div>
           </div>
+          ${isAdmin() ? `
+            <div class="right" style="display:flex;align-items:center;justify-content:flex-end;">
+              <button class="btn danger sm" type="button" onclick="event.stopPropagation();deleteInventarioPTLoteAdmin('${escapeHtml(String(p.producto || ""))}','${escapeHtml(String(l.lote || ""))}')">🗑 Borrar lote</button>
+            </div>
+          ` : ``}
         </div>
       `;
     }).join("");
@@ -501,6 +506,64 @@ function exportarInventarioPTPDF(){
       console.error(err);
       alert("No se pudo descargar el PDF del inventario.");
     });
+}
+
+
+function _parseLoteMetaPT(lote){
+  const txt = String(lote || "").trim().toUpperCase();
+  const m = txt.match(/^LP-(\d{8})-(\d+)$/);
+  if(!m) return null;
+  return { fechaYmd: m[1], numero: Number(m[2] || 0) };
+}
+
+async function deleteInventarioPTLoteAdmin(producto, lote){
+  if(!isAdmin()){
+    alert("Solo ADMIN puede borrar lotes de inventario PT.");
+    return;
+  }
+
+  const productoTxt = String(producto || "").trim();
+  const loteTxt = String(lote || "").trim();
+  if(!productoTxt || !loteTxt){
+    alert("Producto o lote inválido.");
+    return;
+  }
+
+  const ok = await mbConfirm(`¿Borrar el lote ${loteTxt} de ${productoTxt}?
+
+Se eliminará del inventario PT y se ajustará el correlativo para poder reutilizar ese lote si corresponde.`, "Borrar lote de inventario PT");
+  if(!ok) return;
+
+  const db = getDB();
+  db.inventarioPT = db.inventarioPT || [];
+  db.producciones = db.producciones || [];
+
+  const before = db.inventarioPT.length;
+  db.inventarioPT = db.inventarioPT.filter(function(it){
+    return !(String(it?.producto || "") === productoTxt && String(it?.lote || "") === loteTxt);
+  });
+
+  if (db.inventarioPT.length === before) {
+    alert("No se encontró ese lote en inventario PT.");
+    return;
+  }
+
+  for (const ord of (db.producciones || [])) {
+    if (String(ord?.productoFinal || "") === productoTxt && String(ord?.lote || "") === loteTxt) {
+      ord.omitirEnCorrelativoLote = true;
+      ord.inventarioEliminadoAdmin = true;
+      ord.inventarioEliminadoAdminTs = Date.now();
+      ord.inventarioEliminadoAdminPor = (typeof getUserName === "function") ? getUserName() : "ADMIN";
+    }
+  }
+
+  const meta = _parseLoteMetaPT(loteTxt);
+  if (meta && typeof _rebuildCorrelativoPorProducto === "function") {
+    _rebuildCorrelativoPorProducto(db, "LP", productoTxt, meta.fechaYmd);
+  }
+
+  saveDB(db);
+  loadView("inventarioPT");
 }
 function guardarInventarioPTInicial(){
   if(!isAdmin()) { alert("Acceso restringido."); return; }
