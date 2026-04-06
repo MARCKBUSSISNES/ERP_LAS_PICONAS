@@ -9,6 +9,19 @@ function _formatQtyPT(n){
   return (Math.round(v * 100) % 100 === 0) ? String(Math.round(v)) : v.toFixed(2);
 }
 
+var _editInventarioPTTarget = null;
+
+function _formatDateTimeLocalInv(value){
+  var d = value instanceof Date ? value : new Date(value || Date.now());
+  if (isNaN(d.getTime())) d = new Date();
+  var pad = function(n){ return String(n).padStart(2, "0"); };
+  return d.getFullYear() + "-" +
+    pad(d.getMonth() + 1) + "-" +
+    pad(d.getDate()) + "T" +
+    pad(d.getHours()) + ":" +
+    pad(d.getMinutes());
+}
+
 function renderInventarioPT(){
   const items = getInventarioPTGeneral();
   const rows = items.map(function(p, idx){
@@ -34,7 +47,8 @@ function renderInventarioPT(){
             <div style="font-weight:800;color:#fff;">${money(l.costoTotal || 0)}</div>
           </div>
           ${isAdmin() ? `
-            <div class="right" style="display:flex;align-items:center;justify-content:flex-end;">
+            <div class="right" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;">
+              <button class="btn sm" type="button" onclick="event.stopPropagation();openEditarInventarioPTLoteModal('${encodeURIComponent(String(p.producto || ""))}','${encodeURIComponent(String(l.lote || ""))}')">✏️ Editar</button>
               <button class="btn danger sm" type="button" onclick="event.stopPropagation();deleteInventarioPTLoteAdmin('${escapeHtml(String(p.producto || ""))}','${escapeHtml(String(l.lote || ""))}')">🗑 Borrar lote</button>
             </div>
           ` : ``}
@@ -142,6 +156,38 @@ function renderInventarioPT(){
         ${rows || `<tr><td colspan="5" class="muted">Sin inventario PT</td></tr>`}
       </tbody>
     </table>
+
+    <div id="editInventarioPTModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;align-items:center;justify-content:center;padding:18px;">
+      <div class="panel" style="width:min(560px,100%);margin:0 auto;">
+        <h3>Editar lote de inventario PT</h3>
+        <div id="editInventarioPTMeta" class="muted small" style="margin-bottom:10px;"></div>
+
+        <div class="row">
+          <div>
+            <label>Lote</label>
+            <input id="editInventarioPTLote" placeholder="Lote">
+          </div>
+          <div>
+            <label>Cantidad</label>
+            <input id="editInventarioPTCantidad" type="number" min="0.01" step="0.01" placeholder="0">
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Fecha de referencia</label>
+            <input id="editInventarioPTFechaRef" type="datetime-local" readonly>
+          </div>
+        </div>
+
+        <div id="editInventarioPTMsg" class="muted small" style="margin:8px 0 14px 0;"></div>
+
+        <div class="actions" style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn" type="button" onclick="closeEditarInventarioPTLoteModal()">Cancelar</button>
+          <button class="btn accent" type="button" onclick="saveEditarInventarioPTLoteModal()">Guardar cambios</button>
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -615,5 +661,141 @@ function guardarInventarioPTInicial(){
   document.getElementById("ptInitPrecioVenta").value = "";
 
   alert("Carga inicial guardada correctamente.");
+  loadView("inventarioPT");
+}
+
+
+function openEditarInventarioPTLoteModal(productoEnc, loteEnc){
+  if(!isAdmin()){
+    alert("Solo ADMIN puede editar lotes de inventario PT.");
+    return;
+  }
+
+  var producto = decodeURIComponent(String(productoEnc || ""));
+  var lote = decodeURIComponent(String(loteEnc || ""));
+
+  var db = getDB();
+  db.inventarioPT = db.inventarioPT || [];
+
+  var item = db.inventarioPT.find(function(it){
+    return String(it?.producto || "") === producto && String(it?.lote || "") === lote;
+  });
+
+  if(!item){
+    alert("No se encontró el lote a editar.");
+    return;
+  }
+
+  _editInventarioPTTarget = {
+    producto: producto,
+    lote: lote
+  };
+
+  var modal = document.getElementById("editInventarioPTModal");
+  var meta = document.getElementById("editInventarioPTMeta");
+  var inpLote = document.getElementById("editInventarioPTLote");
+  var inpCantidad = document.getElementById("editInventarioPTCantidad");
+  var inpFechaRef = document.getElementById("editInventarioPTFechaRef");
+  var msg = document.getElementById("editInventarioPTMsg");
+
+  if(!modal || !meta || !inpLote || !inpCantidad || !inpFechaRef || !msg){
+    alert("No se encontró el modal de edición.");
+    return;
+  }
+
+  meta.textContent = producto + " • Lote actual: " + lote;
+  inpLote.value = String(item.lote || "");
+  inpCantidad.value = Number(item.cantidad || 0);
+  inpFechaRef.value = _formatDateTimeLocalInv(item.fechaISO || item.fecha || item.ts || Date.now());
+  msg.textContent = "";
+
+  modal.style.display = "flex";
+}
+
+function closeEditarInventarioPTLoteModal(){
+  var modal = document.getElementById("editInventarioPTModal");
+  if(modal) modal.style.display = "none";
+  _editInventarioPTTarget = null;
+}
+
+async function saveEditarInventarioPTLoteModal(){
+  if(!isAdmin()){
+    alert("Solo ADMIN puede editar lotes de inventario PT.");
+    return;
+  }
+
+  if(!_editInventarioPTTarget){
+    alert("No hay lote seleccionado.");
+    return;
+  }
+
+  var nuevoLote = String(document.getElementById("editInventarioPTLote")?.value || "").trim();
+  var nuevaCantidad = Number(document.getElementById("editInventarioPTCantidad")?.value || 0);
+  var msg = document.getElementById("editInventarioPTMsg");
+
+  if(!nuevoLote){
+    if(msg) msg.textContent = "Ingresa el lote.";
+    return;
+  }
+  if(!nuevaCantidad || nuevaCantidad <= 0){
+    if(msg) msg.textContent = "La cantidad debe ser mayor a 0.";
+    return;
+  }
+
+  var db = getDB();
+  db.inventarioPT = db.inventarioPT || [];
+
+  var idx = db.inventarioPT.findIndex(function(it){
+    return String(it?.producto || "") === String(_editInventarioPTTarget.producto || "") &&
+           String(it?.lote || "") === String(_editInventarioPTTarget.lote || "");
+  });
+
+  if(idx === -1){
+    if(msg) msg.textContent = "No se encontró el lote.";
+    return;
+  }
+
+  var duplicado = db.inventarioPT.some(function(it, i){
+    if(i === idx) return false;
+    return String(it?.producto || "").trim().toLowerCase() === String(_editInventarioPTTarget.producto || "").trim().toLowerCase() &&
+           String(it?.lote || "").trim().toLowerCase() === nuevoLote.trim().toLowerCase();
+  });
+
+  if(duplicado){
+    if(msg) msg.textContent = "Ya existe otro lote con ese nombre para este producto.";
+    return;
+  }
+
+  var item = db.inventarioPT[idx];
+  var loteAnterior = String(item.lote || "");
+  var cantidadAnterior = Number(item.cantidad || 0);
+
+  item.lote = nuevoLote;
+  item.cantidad = nuevaCantidad;
+  if(Number(item.costoUnitario || 0) > 0){
+    item.costoTotal = Number(item.costoUnitario || 0) * nuevaCantidad;
+  }
+
+  item.editadoAdminTs = Date.now();
+  item.editadoAdminPor = (typeof getUserName === "function") ? getUserName() : "ADMIN";
+  item.historialEdicionesAdmin = Array.isArray(item.historialEdicionesAdmin) ? item.historialEdicionesAdmin : [];
+  item.historialEdicionesAdmin.push({
+    ts: Date.now(),
+    usuario: (typeof getUserName === "function") ? getUserName() : "ADMIN",
+    loteAnterior: loteAnterior,
+    loteNuevo: nuevoLote,
+    cantidadAnterior: cantidadAnterior,
+    cantidadNueva: nuevaCantidad
+  });
+
+  var metaAnterior = _parseLoteMetaPT(loteAnterior);
+  var metaNueva = _parseLoteMetaPT(nuevoLote);
+  if (typeof _rebuildCorrelativoPorProducto === "function") {
+    if (metaAnterior) _rebuildCorrelativoPorProducto(db, "LP", String(item.producto || ""), metaAnterior.fechaYmd);
+    if (metaNueva) _rebuildCorrelativoPorProducto(db, "LP", String(item.producto || ""), metaNueva.fechaYmd);
+  }
+
+  saveDB(db);
+  closeEditarInventarioPTLoteModal();
   loadView("inventarioPT");
 }
